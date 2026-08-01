@@ -13,6 +13,9 @@ const ui = {
   fullscreen: document.querySelector('#fullscreen'),
   event: document.querySelector('#event'),
   power: document.querySelector('#power'),
+  rank: document.querySelector('#rank'),
+  mission: document.querySelector('#mission'),
+  missionProgress: document.querySelector('#mission-progress'),
 };
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -20,10 +23,23 @@ const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const difficultyAt = seconds => 1 + Math.min(seconds / 55, 2.4);
 
 const assets = {
-  background: loadImage('assets/reef-kingdom.png'),
-  hero: loadImage('assets/hero-fish.png'),
-  predator: loadImage('assets/reef-predator.png'),
+  background: loadImage('assets/reef-kingdom.png?v=atlas'),
+  hero: loadImage('assets/hero-fish.png?v=atlas'),
+  predator: loadImage('assets/reef-predator.png?v=atlas'),
 };
+
+const ranks = [
+  { score: 0, name: 'الزريعة', scale: 1 },
+  { score: 35, name: 'قارئ التيار', scale: 1.1 },
+  { score: 90, name: 'رحّالة الأطلس', scale: 1.2 },
+  { score: 180, name: 'سيد الأعماق', scale: 1.32 },
+];
+
+const missionDeck = [
+  { type: 'pearls', target: 14, label: 'اجمع 14 رمز تيار' },
+  { type: 'gold', target: 3, label: 'اعثر على 3 كنوز نحاسية' },
+  { type: 'dash', target: 3, label: 'اهزم 3 حرّاس بالاندفاع' },
+];
 
 let width = innerWidth;
 let height = innerHeight;
@@ -52,10 +68,14 @@ const state = {
   eventTime: 0,
   shield: 0,
   slowTime: 0,
+  rank: 0,
+  mission: null,
+  bossClock: 0,
+  bossDefeated: false,
 };
 
 const target = { x: width * .42, y: height * .55 };
-const player = { x: target.x, y: target.y, vx: 0, vy: 0, radius: 34, direction: 1, invulnerable: 0, dashCooldown: 0, dashTime: 0 };
+const player = { x: target.x, y: target.y, vx: 0, vy: 0, radius: 34, direction: 1, invulnerable: 0, dashCooldown: 0, dashTime: 0, dashId: 0 };
 const bubbles = [];
 const enemies = [];
 const relics = [];
@@ -114,6 +134,30 @@ function showEvent(message) {
   state.eventTime = 2.6;
 }
 
+function startMission() {
+  const template = missionDeck[Math.floor(Math.random() * missionDeck.length)];
+  state.mission = { ...template, progress: 0, complete: false };
+}
+
+function advanceMission(type) {
+  const mission = state.mission;
+  if (!mission || mission.complete || mission.type !== type) return;
+  mission.progress++;
+  if (mission.progress >= mission.target) {
+    mission.complete = true;
+    state.score += 45;
+    showEvent('✓ اكتمل مسار الرحلة · مكافأة 45');
+    burst(player.x, player.y, '#e8d7a7', 34);
+    tone(980, .2, 'triangle', .05);
+  }
+}
+
+function rankFor(score) {
+  let index = 0;
+  for (let i = 1; i < ranks.length; i++) if (score >= ranks[i].score) index = i;
+  return index;
+}
+
 function resetGame() {
   state.running = true;
   state.score = 0;
@@ -132,6 +176,9 @@ function resetGame() {
   state.eventTime = 0;
   state.shield = 0;
   state.slowTime = 0;
+  state.rank = 0;
+  state.bossClock = 48;
+  state.bossDefeated = false;
   bubbles.length = 0;
   enemies.length = 0;
   relics.length = 0;
@@ -143,8 +190,10 @@ function resetGame() {
   player.invulnerable = 0;
   player.dashCooldown = 0;
   player.dashTime = 0;
+  player.dashId = 0;
   target.x = player.x;
   target.y = player.y;
+  startMission();
   updateHud();
   ui.overlay.classList.remove('visible');
   ui.event.classList.remove('visible');
@@ -164,6 +213,13 @@ function endGame() {
 }
 
 function updateHud() {
+  const nextRank = rankFor(state.score);
+  if (nextRank > state.rank) {
+    state.rank = nextRank;
+    showEvent(`↟ تطورت إلى ${ranks[nextRank].name}`);
+    burst(player.x, player.y, '#e5c581', 28);
+  }
+  player.radius = 34 * ranks[state.rank].scale;
   ui.score.textContent = state.score.toLocaleString('ar');
   ui.combo.textContent = `×${state.combo}`;
   ui.lives.textContent = Array.from({ length: 3 }, (_, i) => i < state.lives ? '♥' : '♡').join(' ');
@@ -172,6 +228,9 @@ function updateHud() {
   else if (state.slowTime > 0) ui.power.textContent = `❄ سكون الأعماق ${Math.ceil(state.slowTime)}ث`;
   else if (player.dashCooldown > 0) ui.power.textContent = `⚡ اندفاع ${player.dashCooldown.toFixed(1)}ث`;
   else ui.power.textContent = '⚡ الاندفاع جاهز';
+  ui.rank.textContent = ranks[state.rank].name;
+  ui.mission.textContent = state.mission?.label || 'اكتشف المهمة';
+  ui.missionProgress.textContent = state.mission?.complete ? '✓ مكتملة' : `التقدم: ${state.mission?.progress || 0} من ${state.mission?.target || 0}`;
 }
 
 function spawnBubble(gold = false) {
@@ -195,7 +254,27 @@ function spawnEnemy() {
     speed: (74 + Math.random() * 42) * difficultyAt(state.elapsed),
     fromRight,
     phase: Math.random() * Math.PI * 2,
+    boss: false,
+    hp: 1,
+    lastDashId: -1,
   });
+}
+
+function spawnBoss() {
+  const size = clamp(Math.min(width, height) * .36, 230, 330);
+  enemies.push({
+    x: width + size,
+    y: height * .5,
+    size,
+    speed: 48,
+    fromRight: true,
+    phase: 0,
+    boss: true,
+    hp: 3,
+    lastDashId: -1,
+  });
+  showEvent('⚑ حارس الأطلس ظهر · اندفع خلاله 3 مرات');
+  tone(92, .5, 'sawtooth', .055);
 }
 
 function spawnRelic() {
@@ -249,6 +328,7 @@ function dash() {
   target.y = clamp(player.y + y * 110, 80, height - 45);
   player.dashCooldown = 2.8;
   player.dashTime = .28;
+  player.dashId++;
   player.invulnerable = Math.max(player.invulnerable, .34);
   burst(player.x, player.y, '#b9fbff', 18);
   tone(360, .1, 'triangle', .04);
@@ -293,6 +373,7 @@ function update(dt) {
   state.enemyClock -= dt;
   state.relicClock -= dt;
   state.surgeClock -= dt;
+  state.bossClock -= dt;
   if (state.bubbleClock <= 0) {
     spawnBubble(false);
     state.bubbleClock = clamp(.82 - state.elapsed * .003, .48, .82);
@@ -313,6 +394,10 @@ function update(dt) {
     treasureSurge(10);
     state.surgeClock = 28 + Math.random() * 8;
   }
+  if (state.bossClock <= 0 && !state.bossDefeated && !enemies.some(enemy => enemy.boss)) {
+    spawnBoss();
+    state.bossClock = Number.POSITIVE_INFINITY;
+  }
 
   for (let i = bubbles.length - 1; i >= 0; i--) {
     const bubble = bubbles[i];
@@ -324,6 +409,8 @@ function update(dt) {
       state.combo = state.comboTime > 0 ? Math.min(state.combo + 1, 5) : 1;
       state.comboTime = 2.4;
       state.score += base * state.combo;
+      advanceMission('pearls');
+      if (bubble.gold) advanceMission('gold');
       burst(bubble.x, bubble.y, bubble.gold ? '#ffd76f' : '#7ef5ff', bubble.gold ? 22 : 12);
       tone(bubble.gold ? 880 : 660, .08, 'sine', .035);
       bubbles.splice(i, 1);
@@ -352,7 +439,27 @@ function update(dt) {
     const direction = enemy.fromRight ? -1 : 1;
     enemy.x += direction * enemy.speed * (state.slowTime > 0 ? .36 : 1) * dt;
     enemy.y += (player.y - enemy.y) * .12 * dt + Math.sin(state.elapsed * 2 + enemy.phase) * 8 * dt;
-    if (state.hitCooldown <= 0 && player.invulnerable <= 0 && distance(player, enemy) < player.radius + enemy.size * .24) {
+    const touching = distance(player, enemy) < player.radius + enemy.size * .24;
+    if (touching && player.dashTime > 0 && enemy.lastDashId !== player.dashId) {
+      enemy.lastDashId = player.dashId;
+      enemy.hp--;
+      enemy.x -= direction * 85;
+      player.vx -= direction * 180;
+      burst(enemy.x, enemy.y, enemy.boss ? '#e5c581' : '#b86b45', enemy.boss ? 38 : 24);
+      tone(enemy.boss ? 130 : 240, .14, 'square', .045);
+      if (enemy.hp <= 0) {
+        state.score += enemy.boss ? 120 : 8;
+        advanceMission('dash');
+        if (enemy.boss) {
+          state.bossDefeated = true;
+          showEvent('✦ سقط حارس الأطلس · مكافأة 120');
+        }
+        enemies.splice(i, 1);
+        updateHud();
+      }
+      continue;
+    }
+    if (state.hitCooldown <= 0 && player.invulnerable <= 0 && touching) {
       if (state.shield) {
         state.shield = 0;
         state.shake = 7;
@@ -372,11 +479,22 @@ function update(dt) {
       player.vx += direction * 250;
       burst(player.x, player.y, '#ff526f', 28);
       tone(110, .18, 'sawtooth', .06);
-      enemies.splice(i, 1);
+      if (enemy.boss) {
+        enemy.x = enemy.fromRight ? width + enemy.size * .75 : -enemy.size * .75;
+        enemy.y = 120 + Math.random() * Math.max(80, height - 240);
+      } else {
+        enemies.splice(i, 1);
+      }
       updateHud();
       if (state.lives <= 0) endGame();
     } else if (enemy.x < -enemy.size * 1.4 || enemy.x > width + enemy.size * 1.4) {
-      enemies.splice(i, 1);
+      if (enemy.boss) {
+        enemy.fromRight = !enemy.fromRight;
+        enemy.x = enemy.fromRight ? width + enemy.size : -enemy.size;
+        enemy.y = 120 + Math.random() * Math.max(80, height - 240);
+      } else {
+        enemies.splice(i, 1);
+      }
     }
   }
 
@@ -424,7 +542,6 @@ function draw() {
   enemies.forEach(drawEnemy);
   drawPlayer();
   drawParticles();
-  drawForeground();
   ctx.restore();
 
   if (state.flash > 0) {
@@ -435,7 +552,7 @@ function draw() {
 
 function drawBackground() {
   const image = assets.background;
-  ctx.fillStyle = '#04213e';
+  ctx.fillStyle = '#071823';
   ctx.fillRect(0, 0, width, height);
   if (image.complete && image.naturalWidth) {
     const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight) * 1.08;
@@ -444,44 +561,31 @@ function drawBackground() {
     const parallax = ((player.x || width / 2) / Math.max(width, 1) - .5) * -28;
     ctx.drawImage(image, (width - imageWidth) / 2 + parallax, (height - imageHeight) / 2, imageWidth, imageHeight);
   }
-  const depth = ctx.createLinearGradient(0, 0, 0, height);
-  depth.addColorStop(0, 'rgba(55, 225, 255, .06)');
-  depth.addColorStop(.6, 'rgba(2, 24, 63, .02)');
-  depth.addColorStop(1, 'rgba(0, 7, 24, .46)');
-  ctx.fillStyle = depth;
+  ctx.fillStyle = 'rgba(3, 15, 24, .16)';
   ctx.fillRect(0, 0, width, height);
 }
 
 function drawLightShafts() {
   ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  ctx.globalAlpha = .13;
-  const sway = Math.sin(state.elapsed * .2) * 45;
-  for (let i = 0; i < 4; i++) {
-    const x = width * (.14 + i * .25) + sway * (i % 2 ? 1 : -1);
-    const gradient = ctx.createLinearGradient(x, 0, x + 160, height * .8);
-    gradient.addColorStop(0, 'rgba(177, 252, 255, .75)');
-    gradient.addColorStop(1, 'rgba(55, 188, 255, 0)');
-    ctx.fillStyle = gradient;
+  ctx.strokeStyle = 'rgba(232, 215, 172, .18)';
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([8, 12]);
+  const drift = Math.sin(state.elapsed * .22) * 24;
+  for (let i = 0; i < 6; i++) {
+    const y = height * (.18 + i * .115);
     ctx.beginPath();
-    ctx.moveTo(x - 30, -10);
-    ctx.lineTo(x + 55, -10);
-    ctx.lineTo(x + 240, height * .8);
-    ctx.lineTo(x + 80, height * .8);
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(-40, y);
+    ctx.bezierCurveTo(width * .25, y - 44 + drift, width * .62, y + 52 - drift, width + 40, y - 16);
+    ctx.stroke();
   }
   ctx.restore();
 }
 
 function drawMotes() {
   ctx.save();
-  ctx.globalCompositeOperation = 'screen';
   for (const mote of motes) {
-    ctx.fillStyle = `rgba(146, 244, 255, ${mote.alpha})`;
-    ctx.beginPath();
-    ctx.arc(mote.x, mote.y, mote.size, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = `rgba(220, 193, 137, ${mote.alpha * .58})`;
+    ctx.fillRect(mote.x, mote.y, mote.size * 2.4, Math.max(1, mote.size * .55));
   }
   ctx.restore();
 }
@@ -490,24 +594,26 @@ function drawBubble(bubble) {
   const { x, y, radius, gold } = bubble;
   ctx.save();
   ctx.translate(x, y);
-  ctx.shadowColor = gold ? '#ffc84a' : '#57efff';
-  ctx.shadowBlur = gold ? 28 : 17;
-  const fill = ctx.createRadialGradient(-radius * .32, -radius * .35, radius * .08, 0, 0, radius);
-  fill.addColorStop(0, 'rgba(255,255,255,.94)');
-  fill.addColorStop(.22, gold ? 'rgba(255,224,113,.62)' : 'rgba(117,241,255,.44)');
-  fill.addColorStop(.72, gold ? 'rgba(255,151,28,.18)' : 'rgba(44,132,255,.12)');
-  fill.addColorStop(1, 'rgba(255,255,255,.04)');
-  ctx.fillStyle = fill;
-  ctx.strokeStyle = gold ? 'rgba(255,229,132,.9)' : 'rgba(198,250,255,.76)';
+  ctx.rotate(bubble.drift * .15);
+  ctx.fillStyle = gold ? '#b66f43' : '#173f49';
+  ctx.strokeStyle = gold ? '#ecd59f' : '#9ec9bd';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.arc(0, 0, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = gold ? '#fff0a5' : '#d7fcff';
+  ctx.setLineDash([3, 4]);
   ctx.beginPath();
-  ctx.arc(0, 2, radius * .22, 0, Math.PI * 2);
+  ctx.arc(0, 0, radius * .68, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ead8ab';
+  ctx.beginPath();
+  ctx.moveTo(0, -radius * .34);
+  ctx.lineTo(radius * .24, 0);
+  ctx.lineTo(0, radius * .34);
+  ctx.lineTo(-radius * .24, 0);
+  ctx.closePath();
   ctx.fill();
   ctx.restore();
 }
@@ -518,11 +624,8 @@ function drawRelic(relic) {
   ctx.translate(relic.x, relic.y);
   ctx.rotate(state.elapsed * .8);
   ctx.scale(pulse, pulse);
-  ctx.globalCompositeOperation = 'screen';
-  ctx.shadowColor = '#d78bff';
-  ctx.shadowBlur = 30;
-  ctx.strokeStyle = '#e7b7ff';
-  ctx.fillStyle = 'rgba(151, 68, 255, .32)';
+  ctx.strokeStyle = '#ead8ab';
+  ctx.fillStyle = '#b66f43';
   ctx.lineWidth = 3;
   ctx.beginPath();
   for (let i = 0; i < 6; i++) {
@@ -535,7 +638,7 @@ function drawRelic(relic) {
   ctx.fill();
   ctx.stroke();
   ctx.rotate(-state.elapsed * .8);
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = '#071823';
   ctx.font = 'bold 22px Segoe UI';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -544,7 +647,6 @@ function drawRelic(relic) {
 }
 
 function drawPlayer() {
-  const speed = Math.hypot(player.vx, player.vy);
   const bob = Math.sin(performance.now() * .006) * 3;
   const tilt = clamp(player.vy / 850, -.16, .16);
   const alpha = player.invulnerable > 0 && Math.floor(player.invulnerable * 12) % 2 ? .35 : 1;
@@ -553,11 +655,13 @@ function drawPlayer() {
   ctx.translate(player.x, player.y + bob);
   ctx.rotate(tilt);
   ctx.scale(player.direction, 1);
-  ctx.shadowColor = '#4aeaff';
-  ctx.shadowBlur = 18 + Math.min(speed * .04, 14);
+  ctx.shadowColor = 'rgba(2, 9, 14, .72)';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 5;
+  ctx.shadowOffsetY = 5;
   const image = assets.hero;
   if (image.complete && image.naturalWidth) {
-    const drawWidth = clamp(Math.min(width, height) * .17, 118, 180);
+    const drawWidth = clamp(Math.min(width, height) * .17, 118, 180) * ranks[state.rank].scale;
     ctx.drawImage(image, -drawWidth * .57, -drawWidth / 3, drawWidth, drawWidth * 2 / 3);
   } else {
     ctx.fillStyle = '#43e7e6';
@@ -573,8 +677,10 @@ function drawEnemy(enemy) {
   ctx.save();
   ctx.translate(enemy.x, enemy.y + bob);
   ctx.scale(enemy.fromRight ? 1 : -1, 1);
-  ctx.shadowColor = 'rgba(255, 62, 74, .62)';
-  ctx.shadowBlur = 20;
+  ctx.shadowColor = 'rgba(2, 9, 14, .78)';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 6;
+  ctx.shadowOffsetY = 6;
   const image = assets.predator;
   if (image.complete && image.naturalWidth) {
     ctx.drawImage(image, -enemy.size * .58, -enemy.size * .31, enemy.size * 1.16, enemy.size * .64);
@@ -584,28 +690,25 @@ function drawEnemy(enemy) {
     ctx.ellipse(0, 0, enemy.size * .48, enemy.size * .22, 0, 0, Math.PI * 2);
     ctx.fill();
   }
+  if (enemy.boss) {
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = '#e7d29b';
+    for (let i = 0; i < 3; i++) {
+      ctx.globalAlpha = i < enemy.hp ? 1 : .22;
+      ctx.fillRect(-22 + i * 18, -enemy.size * .39, 12, 5);
+    }
+  }
   ctx.restore();
 }
 
 function drawParticles() {
   ctx.save();
-  ctx.globalCompositeOperation = 'screen';
   for (const particle of particles) {
     ctx.globalAlpha = clamp(particle.life / particle.maxLife, 0, 1);
     ctx.fillStyle = particle.color;
-    ctx.beginPath();
-    ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillRect(particle.x, particle.y, particle.size * 1.7, particle.size * .7);
   }
   ctx.restore();
-}
-
-function drawForeground() {
-  const vignette = ctx.createRadialGradient(width / 2, height * .45, Math.min(width, height) * .25, width / 2, height / 2, Math.max(width, height) * .72);
-  vignette.addColorStop(0, 'rgba(0, 8, 24, 0)');
-  vignette.addColorStop(1, 'rgba(0, 4, 18, .48)');
-  ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, width, height);
 }
 
 function ensureAudio() {
@@ -674,6 +777,7 @@ function selfCheck() {
   console.assert(distance({ x: 0, y: 0 }, { x: 3, y: 4 }) === 5, 'distance calculation');
   console.assert(difficultyAt(200) <= 3.4, 'difficulty ceiling');
   console.assert(movementFrom(new Set(['ArrowLeft', 'ArrowUp'])).x === -1, 'arrow key movement');
+  console.assert(rankFor(100) === 2, 'rank thresholds');
 }
 
 selfCheck();
