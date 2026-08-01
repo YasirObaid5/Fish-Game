@@ -1,14 +1,15 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" data-world="reef">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#061d3b">
   <title>مغامرة الأعماق</title>
-  <link rel="stylesheet" href="style.css?v=20260801-atlas2">
+  <link rel="stylesheet" href="style.css?v=20260801-worlds">
 </head>
 <body>
   <main class="game-shell">
+    <canvas id="world-fx" aria-hidden="true"></canvas>
     <canvas id="game" aria-label="لعبة مغامرة الأعماق"></canvas>
 
     <header class="hud" aria-live="polite">
@@ -26,16 +27,27 @@
 
     <section id="overlay" class="overlay visible">
       <div class="panel">
-        <p class="eyebrow">فصل مطبوع من قاع البحر</p>
+        <p class="eyebrow">رحلة إلى مملكة الشعاب</p>
         <h1 id="title">مغامرة الأعماق</h1>
-        <p id="message">اجمع رموز التيار، وطوّر سلالة سمكتك، وأنجز مسار الرحلة قبل ظهور حارس الأطلس.</p>
+        <p id="message">اجمع اللآلئ، وطوّر سلالة سمكتك، وأنجز مسار الرحلة قبل ظهور حارس العالم.</p>
         <div class="legend">
           <span><b class="pearl-dot"></b> لؤلؤة</span>
           <span><b class="gold-dot"></b> كنز نادر</span>
           <span><b class="relic-dot"></b> أثر غامض</span>
           <span><b class="danger-dot"></b> خطر</span>
         </div>
-        <button id="start" class="start-button" type="button">ابدأ المغامرة</button>
+        <div class="world-picker" aria-label="اختر عالم اللعبة">
+          <button class="world-option active" type="button" data-world="reef" aria-pressed="true">
+            <b>حدائق المرجان</b><small>سينمائي ومشرق</small>
+          </button>
+          <button class="world-option" type="button" data-world="atlas" aria-pressed="false">
+            <b>الأطلس الغارق</b><small>حبر وورق</small>
+          </button>
+          <button class="world-option" type="button" data-world="void" aria-pressed="false">
+            <b>الهاوية البلورية</b><small>عالم إجرائي ثلاثي الأبعاد</small>
+          </button>
+        </div>
+        <button id="start" class="start-button" type="button">ابدأ في هذا العالم</button>
         <p class="controls">الأسهم للحركة · Space للاندفاع · ويمكنك استخدام المؤشر أو اللمس</p>
       </div>
     </section>
@@ -49,6 +61,7 @@
     <div id="power" class="power-status">⚡ الاندفاع جاهز</div>
     <div class="depth-meter" aria-hidden="true"><span id="depth"></span></div>
   </main>
-  <script src="main.js?v=20260801-atlas2" defer></script>
+  <script src="worlds.bundle.js?v=20260801-worlds3" defer></script>
+  <script src="main.js?v=20260801-worlds3" defer></script>
 </body>
 </html>

@@ -1,12 +1,14 @@
 const canvas = document.querySelector('#game');
-const ctx = canvas.getContext('2d', { alpha: false });
+const ctx = canvas.getContext('2d', { alpha: true });
 const ui = {
+  shell: document.querySelector('.game-shell'),
   score: document.querySelector('#score'),
   combo: document.querySelector('#combo'),
   lives: document.querySelector('#lives'),
   depth: document.querySelector('#depth'),
   overlay: document.querySelector('#overlay'),
   title: document.querySelector('#title'),
+  eyebrow: document.querySelector('.eyebrow'),
   message: document.querySelector('#message'),
   start: document.querySelector('#start'),
   sound: document.querySelector('#sound'),
@@ -16,23 +18,54 @@ const ui = {
   rank: document.querySelector('#rank'),
   mission: document.querySelector('#mission'),
   missionProgress: document.querySelector('#mission-progress'),
+  worldButtons: [...document.querySelectorAll('.world-option')],
 };
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const difficultyAt = seconds => 1 + Math.min(seconds / 55, 2.4);
+const enemyFacing = fromRight => fromRight ? -1 : 1;
 
+const worlds = {
+  reef: {
+    background: 'assets/worlds/reef/reef-kingdom.png',
+    hero: 'assets/worlds/reef/hero-fish.png',
+    predator: 'assets/worlds/reef/reef-predator.png',
+    predatorFacing: -1,
+    eyebrow: 'رحلة إلى مملكة الشعاب',
+    message: 'اجمع اللآلئ، وطوّر سلالة سمكتك، وأنجز مسار الرحلة قبل ظهور ملك المرجان.',
+    guardian: 'ملك المرجان',
+  },
+  atlas: {
+    background: 'assets/worlds/atlas/reef-kingdom.png',
+    hero: 'assets/worlds/atlas/hero-fish.png',
+    predator: 'assets/worlds/atlas/reef-predator.png',
+    predatorFacing: 1,
+    eyebrow: 'فصل مطبوع من قاع البحر',
+    message: 'اجمع رموز التيار، وطوّر سلالة سمكتك، وأنجز مسار الرحلة قبل ظهور حارس الأطلس.',
+    guardian: 'حارس الأطلس',
+  },
+  void: {
+    background: null,
+    hero: null,
+    predator: null,
+    predatorFacing: 1,
+    eyebrow: 'إشارة من وراء الضوء',
+    message: 'اجمع الشفرات البلورية، وطوّر سلالتك، واستعد لمواجهة طيف الهاوية.',
+    guardian: 'طيف الهاوية',
+  },
+};
+let selectedWorld = worlds[localStorage.getItem('fish-game-world')] ? localStorage.getItem('fish-game-world') : 'reef';
 const assets = {
-  background: loadImage('assets/reef-kingdom.png?v=atlas'),
-  hero: loadImage('assets/hero-fish.png?v=atlas'),
-  predator: loadImage('assets/reef-predator.png?v=atlas'),
+  hero: loadImage(worlds[selectedWorld].hero),
+  predator: loadImage(worlds[selectedWorld].predator),
 };
 
 const ranks = [
   { score: 0, name: 'الزريعة', scale: 1 },
   { score: 35, name: 'قارئ التيار', scale: 1.1 },
-  { score: 90, name: 'رحّالة الأطلس', scale: 1.2 },
-  { score: 180, name: 'سيد الأعماق', scale: 1.32 },
+  { score: 90, name: 'رحّالة الأعماق', scale: 1.2 },
+  { score: 180, name: 'سيد البحر', scale: 1.32 },
 ];
 
 const missionDeck = [
@@ -84,8 +117,26 @@ let motes = [];
 
 function loadImage(src) {
   const image = new Image();
-  image.src = src;
+  if (src) image.src = src;
   return image;
+}
+
+function selectWorld(name) {
+  if (!worlds[name]) return;
+  selectedWorld = name;
+  const world = worlds[name];
+  document.documentElement.dataset.world = name;
+  assets.hero.src = world.hero || '';
+  assets.predator.src = world.predator || '';
+  ui.eyebrow.textContent = world.eyebrow;
+  ui.message.textContent = world.message;
+  localStorage.setItem('fish-game-world', name);
+  for (const button of ui.worldButtons) {
+    const active = button.dataset.world === name;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
+  dispatchEvent(new CustomEvent('fish-world-change', { detail: name }));
 }
 
 function resize() {
@@ -273,7 +324,7 @@ function spawnBoss() {
     hp: 3,
     lastDashId: -1,
   });
-  showEvent('⚑ حارس الأطلس ظهر · اندفع خلاله 3 مرات');
+  showEvent(`⚑ ${worlds[selectedWorld].guardian} ظهر · اندفع خلاله 3 مرات`);
   tone(92, .5, 'sawtooth', .055);
 }
 
@@ -452,7 +503,7 @@ function update(dt) {
         advanceMission('dash');
         if (enemy.boss) {
           state.bossDefeated = true;
-          showEvent('✦ سقط حارس الأطلس · مكافأة 120');
+          showEvent(`✦ سقط ${worlds[selectedWorld].guardian} · مكافأة 120`);
         }
         enemies.splice(i, 1);
         updateHud();
@@ -530,11 +581,11 @@ function burst(x, y, color, count) {
 }
 
 function draw() {
+  ctx.clearRect(0, 0, width, height);
   const shakeX = state.shake ? (Math.random() - .5) * state.shake : 0;
   const shakeY = state.shake ? (Math.random() - .5) * state.shake : 0;
   ctx.save();
   ctx.translate(shakeX, shakeY);
-  drawBackground();
   drawLightShafts();
   drawMotes();
   bubbles.forEach(drawBubble);
@@ -550,26 +601,12 @@ function draw() {
   }
 }
 
-function drawBackground() {
-  const image = assets.background;
-  ctx.fillStyle = '#071823';
-  ctx.fillRect(0, 0, width, height);
-  if (image.complete && image.naturalWidth) {
-    const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight) * 1.08;
-    const imageWidth = image.naturalWidth * scale;
-    const imageHeight = image.naturalHeight * scale;
-    const parallax = ((player.x || width / 2) / Math.max(width, 1) - .5) * -28;
-    ctx.drawImage(image, (width - imageWidth) / 2 + parallax, (height - imageHeight) / 2, imageWidth, imageHeight);
-  }
-  ctx.fillStyle = 'rgba(3, 15, 24, .16)';
-  ctx.fillRect(0, 0, width, height);
-}
-
 function drawLightShafts() {
+  if (selectedWorld === 'reef') return;
   ctx.save();
-  ctx.strokeStyle = 'rgba(232, 215, 172, .18)';
+  ctx.strokeStyle = selectedWorld === 'void' ? 'rgba(136, 237, 255, .2)' : 'rgba(232, 215, 172, .18)';
   ctx.lineWidth = 1.2;
-  ctx.setLineDash([8, 12]);
+  ctx.setLineDash(selectedWorld === 'void' ? [2, 18] : [8, 12]);
   const drift = Math.sin(state.elapsed * .22) * 24;
   for (let i = 0; i < 6; i++) {
     const y = height * (.18 + i * .115);
@@ -584,14 +621,29 @@ function drawLightShafts() {
 function drawMotes() {
   ctx.save();
   for (const mote of motes) {
-    ctx.fillStyle = `rgba(220, 193, 137, ${mote.alpha * .58})`;
-    ctx.fillRect(mote.x, mote.y, mote.size * 2.4, Math.max(1, mote.size * .55));
+    if (selectedWorld === 'reef') {
+      ctx.fillStyle = `rgba(146, 244, 255, ${mote.alpha})`;
+      ctx.beginPath();
+      ctx.arc(mote.x, mote.y, mote.size, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = selectedWorld === 'void' ? `rgba(151, 240, 255, ${mote.alpha})` : `rgba(220, 193, 137, ${mote.alpha * .58})`;
+      ctx.fillRect(mote.x, mote.y, mote.size * 2.4, Math.max(1, mote.size * .55));
+    }
   }
   ctx.restore();
 }
 
 function drawBubble(bubble) {
   const { x, y, radius, gold } = bubble;
+  if (selectedWorld === 'reef') {
+    drawReefPearl(x, y, radius, gold);
+    return;
+  }
+  if (selectedWorld === 'void') {
+    drawVoidToken(x, y, radius, gold);
+    return;
+  }
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(bubble.drift * .15);
@@ -618,14 +670,61 @@ function drawBubble(bubble) {
   ctx.restore();
 }
 
+function drawReefPearl(x, y, radius, gold) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.shadowColor = gold ? '#ffc84a' : '#57efff';
+  ctx.shadowBlur = gold ? 28 : 17;
+  const fill = ctx.createRadialGradient(-radius * .32, -radius * .35, radius * .08, 0, 0, radius);
+  fill.addColorStop(0, 'rgba(255,255,255,.94)');
+  fill.addColorStop(.24, gold ? 'rgba(255,224,113,.62)' : 'rgba(117,241,255,.44)');
+  fill.addColorStop(1, gold ? 'rgba(255,151,28,.1)' : 'rgba(44,132,255,.06)');
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = gold ? '#ffe184' : '#c6faff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawVoidToken(x, y, radius, gold) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(state.elapsed * .6 + x);
+  ctx.strokeStyle = gold ? '#ffc86b' : '#91f5ff';
+  ctx.fillStyle = gold ? 'rgba(255, 158, 77, .18)' : 'rgba(92, 211, 255, .12)';
+  ctx.shadowColor = ctx.strokeStyle;
+  ctx.shadowBlur = 16;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 3 * i;
+    const px = Math.cos(angle) * radius;
+    const py = Math.sin(angle) * radius;
+    if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-radius * .45, 0);
+  ctx.lineTo(radius * .45, 0);
+  ctx.moveTo(0, -radius * .45);
+  ctx.lineTo(0, radius * .45);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawRelic(relic) {
   const pulse = 1 + Math.sin(state.elapsed * 5 + relic.phase) * .08;
   ctx.save();
   ctx.translate(relic.x, relic.y);
   ctx.rotate(state.elapsed * .8);
   ctx.scale(pulse, pulse);
-  ctx.strokeStyle = '#ead8ab';
-  ctx.fillStyle = '#b66f43';
+  ctx.strokeStyle = selectedWorld === 'reef' ? '#e7b7ff' : selectedWorld === 'void' ? '#93f6ff' : '#ead8ab';
+  ctx.fillStyle = selectedWorld === 'reef' ? 'rgba(151, 68, 255, .48)' : selectedWorld === 'void' ? 'rgba(130, 75, 220, .44)' : '#b66f43';
   ctx.lineWidth = 3;
   ctx.beginPath();
   for (let i = 0; i < 6; i++) {
@@ -638,7 +737,7 @@ function drawRelic(relic) {
   ctx.fill();
   ctx.stroke();
   ctx.rotate(-state.elapsed * .8);
-  ctx.fillStyle = '#071823';
+  ctx.fillStyle = selectedWorld === 'reef' ? '#fff' : selectedWorld === 'void' ? '#dffcff' : '#071823';
   ctx.font = 'bold 22px Segoe UI';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -660,8 +759,10 @@ function drawPlayer() {
   ctx.shadowOffsetX = 5;
   ctx.shadowOffsetY = 5;
   const image = assets.hero;
-  if (image.complete && image.naturalWidth) {
-    const drawWidth = clamp(Math.min(width, height) * .17, 118, 180) * ranks[state.rank].scale;
+  const drawWidth = clamp(Math.min(width, height) * .17, 118, 180) * ranks[state.rank].scale;
+  if (selectedWorld === 'void') {
+    drawVoidFish(drawWidth, false);
+  } else if (image.complete && image.naturalWidth) {
     ctx.drawImage(image, -drawWidth * .57, -drawWidth / 3, drawWidth, drawWidth * 2 / 3);
   } else {
     ctx.fillStyle = '#43e7e6';
@@ -676,13 +777,15 @@ function drawEnemy(enemy) {
   const bob = Math.sin(state.elapsed * 3 + enemy.phase) * 5;
   ctx.save();
   ctx.translate(enemy.x, enemy.y + bob);
-  ctx.scale(enemy.fromRight ? 1 : -1, 1);
+  ctx.scale(enemyFacing(enemy.fromRight) * worlds[selectedWorld].predatorFacing, 1);
   ctx.shadowColor = 'rgba(2, 9, 14, .78)';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetX = 6;
   ctx.shadowOffsetY = 6;
   const image = assets.predator;
-  if (image.complete && image.naturalWidth) {
+  if (selectedWorld === 'void') {
+    drawVoidFish(enemy.size * 1.16, true);
+  } else if (image.complete && image.naturalWidth) {
     ctx.drawImage(image, -enemy.size * .58, -enemy.size * .31, enemy.size * 1.16, enemy.size * .64);
   } else {
     ctx.fillStyle = '#a92d45';
@@ -699,6 +802,43 @@ function drawEnemy(enemy) {
     }
   }
   ctx.restore();
+}
+
+function drawVoidFish(size, predator) {
+  const half = size * .5;
+  const height = size * (predator ? .25 : .22);
+  ctx.shadowColor = predator ? '#ff617e' : '#79f5ff';
+  ctx.shadowBlur = predator ? 18 : 12;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+  ctx.strokeStyle = predator ? '#ff7991' : '#a2f8ff';
+  ctx.fillStyle = predator ? 'rgba(91, 12, 45, .34)' : 'rgba(20, 126, 167, .28)';
+  ctx.lineWidth = Math.max(2, size * .014);
+  ctx.beginPath();
+  ctx.moveTo(-half * .62, 0);
+  ctx.lineTo(-half, -height);
+  ctx.lineTo(-half * .96, 0);
+  ctx.lineTo(-half, height);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-half * .7, 0);
+  ctx.quadraticCurveTo(0, -height, half * .8, 0);
+  ctx.quadraticCurveTo(0, height, -half * .7, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-half * .4, 0);
+  ctx.lineTo(0, -height * .72);
+  ctx.lineTo(half * .36, 0);
+  ctx.lineTo(0, height * .72);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.fillStyle = predator ? '#ffcfdb' : '#e4fdff';
+  ctx.beginPath();
+  ctx.arc(half * .48, -height * .18, Math.max(3, size * .025), 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawParticles() {
@@ -757,6 +897,9 @@ addEventListener('keyup', event => keys.delete(event.code));
 addEventListener('blur', () => keys.clear());
 addEventListener('resize', resize);
 
+for (const button of ui.worldButtons) {
+  button.addEventListener('click', () => selectWorld(button.dataset.world));
+}
 ui.start.addEventListener('click', resetGame);
 ui.sound.addEventListener('click', () => {
   muted = !muted;
@@ -778,9 +921,12 @@ function selfCheck() {
   console.assert(difficultyAt(200) <= 3.4, 'difficulty ceiling');
   console.assert(movementFrom(new Set(['ArrowLeft', 'ArrowUp'])).x === -1, 'arrow key movement');
   console.assert(rankFor(100) === 2, 'rank thresholds');
+  console.assert(enemyFacing(true) === -1 && enemyFacing(false) === 1, 'enemy faces its travel direction');
+  console.assert(enemyFacing(true) * worlds.reef.predatorFacing === 1, 'left-facing reef sprite keeps its travel direction');
 }
 
 selfCheck();
+selectWorld(selectedWorld);
 resize();
 updateHud();
 requestAnimationFrame(frame);
