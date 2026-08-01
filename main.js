@@ -11,6 +11,8 @@ const ui = {
   start: document.querySelector('#start'),
   sound: document.querySelector('#sound'),
   fullscreen: document.querySelector('#fullscreen'),
+  event: document.querySelector('#event'),
+  power: document.querySelector('#power'),
 };
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -45,12 +47,18 @@ const state = {
   hitCooldown: 0,
   shake: 0,
   flash: 0,
+  relicClock: 0,
+  surgeClock: 0,
+  eventTime: 0,
+  shield: 0,
+  slowTime: 0,
 };
 
 const target = { x: width * .42, y: height * .55 };
-const player = { x: target.x, y: target.y, vx: 0, vy: 0, radius: 34, direction: 1, invulnerable: 0 };
+const player = { x: target.x, y: target.y, vx: 0, vy: 0, radius: 34, direction: 1, invulnerable: 0, dashCooldown: 0, dashTime: 0 };
 const bubbles = [];
 const enemies = [];
+const relics = [];
 const particles = [];
 let motes = [];
 
@@ -93,6 +101,19 @@ function moveTarget(event) {
   target.y = clamp(event.clientY - rect.top, 80, height - 45);
 }
 
+function movementFrom(input) {
+  return {
+    x: (input.has('ArrowRight') || input.has('KeyD') ? 1 : 0) - (input.has('ArrowLeft') || input.has('KeyA') ? 1 : 0),
+    y: (input.has('ArrowDown') || input.has('KeyS') ? 1 : 0) - (input.has('ArrowUp') || input.has('KeyW') ? 1 : 0),
+  };
+}
+
+function showEvent(message) {
+  ui.event.textContent = message;
+  ui.event.classList.add('visible');
+  state.eventTime = 2.6;
+}
+
 function resetGame() {
   state.running = true;
   state.score = 0;
@@ -106,18 +127,27 @@ function resetGame() {
   state.hitCooldown = 0;
   state.shake = 0;
   state.flash = 0;
+  state.relicClock = 8;
+  state.surgeClock = 24;
+  state.eventTime = 0;
+  state.shield = 0;
+  state.slowTime = 0;
   bubbles.length = 0;
   enemies.length = 0;
+  relics.length = 0;
   particles.length = 0;
   player.x = width * .42;
   player.y = height * .55;
   player.vx = 0;
   player.vy = 0;
   player.invulnerable = 0;
+  player.dashCooldown = 0;
+  player.dashTime = 0;
   target.x = player.x;
   target.y = player.y;
   updateHud();
   ui.overlay.classList.remove('visible');
+  ui.event.classList.remove('visible');
   ensureAudio();
   tone(520, .08, 'sine', .05);
 }
@@ -138,6 +168,10 @@ function updateHud() {
   ui.combo.textContent = `×${state.combo}`;
   ui.lives.textContent = Array.from({ length: 3 }, (_, i) => i < state.lives ? '♥' : '♡').join(' ');
   ui.depth.style.width = `${Math.min(state.elapsed / 90, 1) * 100}%`;
+  if (state.shield) ui.power.textContent = '🛡 درع المرجان فعّال';
+  else if (state.slowTime > 0) ui.power.textContent = `❄ سكون الأعماق ${Math.ceil(state.slowTime)}ث`;
+  else if (player.dashCooldown > 0) ui.power.textContent = `⚡ اندفاع ${player.dashCooldown.toFixed(1)}ث`;
+  else ui.power.textContent = '⚡ الاندفاع جاهز';
 }
 
 function spawnBubble(gold = false) {
@@ -164,6 +198,62 @@ function spawnEnemy() {
   });
 }
 
+function spawnRelic() {
+  const fromRight = Math.random() > .5;
+  relics.push({
+    x: fromRight ? width + 45 : -45,
+    y: 140 + Math.random() * Math.max(80, height - 280),
+    radius: 27,
+    speed: 58,
+    fromRight,
+    phase: Math.random() * Math.PI * 2,
+  });
+  showEvent('✦ ظهرت جوهرة غامضة في الأعماق');
+}
+
+function treasureSurge(count = 10) {
+  for (let i = 0; i < count; i++) {
+    spawnBubble(i % 3 === 0);
+    const bubble = bubbles[bubbles.length - 1];
+    bubble.y = height * (.35 + Math.random() * .6);
+  }
+  showEvent('✦ عاصفة كنوز! اجمعها قبل أن تختفي');
+  tone(940, .22, 'sine', .045);
+}
+
+function collectRelic(relic) {
+  const gift = Math.floor(Math.random() * 3);
+  if (gift === 0) {
+    state.shield = 1;
+    showEvent('🛡 حصلت على درع المرجان');
+  } else if (gift === 1) {
+    state.slowTime = 7;
+    showEvent('❄ تجمّدت حرّاس الأعماق');
+  } else {
+    treasureSurge(14);
+  }
+  burst(relic.x, relic.y, '#d990ff', 30);
+  tone(1040, .18, 'sine', .05);
+}
+
+function dash() {
+  if (!state.running || player.dashCooldown > 0) return;
+  let { x, y } = movementFrom(keys);
+  if (!x && !y) x = player.direction;
+  const length = Math.hypot(x, y) || 1;
+  x /= length;
+  y /= length;
+  player.vx += x * 720;
+  player.vy += y * 720;
+  target.x = clamp(player.x + x * 110, 55, width - 55);
+  target.y = clamp(player.y + y * 110, 80, height - 45);
+  player.dashCooldown = 2.8;
+  player.dashTime = .28;
+  player.invulnerable = Math.max(player.invulnerable, .34);
+  burst(player.x, player.y, '#b9fbff', 18);
+  tone(360, .1, 'triangle', .04);
+}
+
 function update(dt) {
   updateMotes(dt);
   if (!state.running) return;
@@ -173,11 +263,15 @@ function update(dt) {
   state.shake = Math.max(0, state.shake - dt * 24);
   state.flash = Math.max(0, state.flash - dt * 2.8);
   state.hitCooldown = Math.max(0, state.hitCooldown - dt);
+  state.eventTime = Math.max(0, state.eventTime - dt);
+  state.slowTime = Math.max(0, state.slowTime - dt);
   player.invulnerable = Math.max(0, player.invulnerable - dt);
+  player.dashCooldown = Math.max(0, player.dashCooldown - dt);
+  player.dashTime = Math.max(0, player.dashTime - dt);
+  if (state.eventTime <= 0) ui.event.classList.remove('visible');
   if (state.comboTime <= 0 && state.combo !== 1) state.combo = 1;
 
-  const keyX = (keys.has('arrowright') || keys.has('d') ? 1 : 0) - (keys.has('arrowleft') || keys.has('a') ? 1 : 0);
-  const keyY = (keys.has('arrowdown') || keys.has('s') ? 1 : 0) - (keys.has('arrowup') || keys.has('w') ? 1 : 0);
+  const { x: keyX, y: keyY } = movementFrom(keys);
   if (keyX || keyY) {
     const length = Math.hypot(keyX, keyY) || 1;
     target.x = clamp(target.x + keyX / length * 330 * dt, 55, width - 55);
@@ -197,6 +291,8 @@ function update(dt) {
   state.bubbleClock -= dt;
   state.goldClock -= dt;
   state.enemyClock -= dt;
+  state.relicClock -= dt;
+  state.surgeClock -= dt;
   if (state.bubbleClock <= 0) {
     spawnBubble(false);
     state.bubbleClock = clamp(.82 - state.elapsed * .003, .48, .82);
@@ -208,6 +304,14 @@ function update(dt) {
   if (state.enemyClock <= 0) {
     spawnEnemy();
     state.enemyClock = clamp(4.4 - state.elapsed * .02, 1.7, 4.4);
+  }
+  if (state.relicClock <= 0) {
+    spawnRelic();
+    state.relicClock = 13 + Math.random() * 8;
+  }
+  if (state.surgeClock <= 0) {
+    treasureSurge(10);
+    state.surgeClock = 28 + Math.random() * 8;
   }
 
   for (let i = bubbles.length - 1; i >= 0; i--) {
@@ -229,12 +333,35 @@ function update(dt) {
     }
   }
 
+  for (let i = relics.length - 1; i >= 0; i--) {
+    const relic = relics[i];
+    const direction = relic.fromRight ? -1 : 1;
+    relic.x += direction * relic.speed * dt;
+    relic.y += Math.sin(state.elapsed * 2.2 + relic.phase) * 12 * dt;
+    if (distance(player, relic) < player.radius + relic.radius) {
+      collectRelic(relic);
+      relics.splice(i, 1);
+      updateHud();
+    } else if (relic.x < -70 || relic.x > width + 70) {
+      relics.splice(i, 1);
+    }
+  }
+
   for (let i = enemies.length - 1; i >= 0; i--) {
     const enemy = enemies[i];
     const direction = enemy.fromRight ? -1 : 1;
-    enemy.x += direction * enemy.speed * dt;
+    enemy.x += direction * enemy.speed * (state.slowTime > 0 ? .36 : 1) * dt;
     enemy.y += (player.y - enemy.y) * .12 * dt + Math.sin(state.elapsed * 2 + enemy.phase) * 8 * dt;
     if (state.hitCooldown <= 0 && player.invulnerable <= 0 && distance(player, enemy) < player.radius + enemy.size * .24) {
+      if (state.shield) {
+        state.shield = 0;
+        state.shake = 7;
+        burst(enemy.x, enemy.y, '#8cf8ff', 32);
+        tone(420, .15, 'triangle', .045);
+        enemies.splice(i, 1);
+        showEvent('🛡 الدرع صدّ حارس الأعماق');
+        continue;
+      }
       state.lives--;
       state.combo = 1;
       state.comboTime = 0;
@@ -293,6 +420,7 @@ function draw() {
   drawLightShafts();
   drawMotes();
   bubbles.forEach(drawBubble);
+  relics.forEach(drawRelic);
   enemies.forEach(drawEnemy);
   drawPlayer();
   drawParticles();
@@ -381,6 +509,37 @@ function drawBubble(bubble) {
   ctx.beginPath();
   ctx.arc(0, 2, radius * .22, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
+}
+
+function drawRelic(relic) {
+  const pulse = 1 + Math.sin(state.elapsed * 5 + relic.phase) * .08;
+  ctx.save();
+  ctx.translate(relic.x, relic.y);
+  ctx.rotate(state.elapsed * .8);
+  ctx.scale(pulse, pulse);
+  ctx.globalCompositeOperation = 'screen';
+  ctx.shadowColor = '#d78bff';
+  ctx.shadowBlur = 30;
+  ctx.strokeStyle = '#e7b7ff';
+  ctx.fillStyle = 'rgba(151, 68, 255, .32)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 3 * i;
+    const x = Math.cos(angle) * relic.radius;
+    const y = Math.sin(angle) * relic.radius;
+    if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.rotate(-state.elapsed * .8);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 22px Segoe UI';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('؟', 0, -1);
   ctx.restore();
 }
 
@@ -481,11 +640,18 @@ canvas.addEventListener('pointerdown', event => {
   if (!state.running) ui.start.focus();
 });
 addEventListener('keydown', event => {
-  keys.add(event.key.toLowerCase());
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(event.key)) event.preventDefault();
-  if (event.key === ' ' && !state.running) resetGame();
+  const movementKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(event.code);
+  if (movementKey || event.code === 'Space') event.preventDefault();
+  if (movementKey && !keys.has(event.code)) {
+    if (!state.running) resetGame();
+    target.x = player.x;
+    target.y = player.y;
+  }
+  keys.add(event.code);
+  if (event.code === 'Space') state.running ? dash() : resetGame();
 });
-addEventListener('keyup', event => keys.delete(event.key.toLowerCase()));
+addEventListener('keyup', event => keys.delete(event.code));
+addEventListener('blur', () => keys.clear());
 addEventListener('resize', resize);
 
 ui.start.addEventListener('click', resetGame);
@@ -507,6 +673,7 @@ function selfCheck() {
   console.assert(clamp(12, 0, 10) === 10, 'clamp upper bound');
   console.assert(distance({ x: 0, y: 0 }, { x: 3, y: 4 }) === 5, 'distance calculation');
   console.assert(difficultyAt(200) <= 3.4, 'difficulty ceiling');
+  console.assert(movementFrom(new Set(['ArrowLeft', 'ArrowUp'])).x === -1, 'arrow key movement');
 }
 
 selfCheck();
