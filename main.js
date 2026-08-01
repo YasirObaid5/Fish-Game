@@ -108,11 +108,12 @@ const state = {
 };
 
 const target = { x: width * .42, y: height * .55 };
-const player = { x: target.x, y: target.y, vx: 0, vy: 0, radius: 34, direction: 1, invulnerable: 0, dashCooldown: 0, dashTime: 0, dashId: 0 };
+const player = { x: target.x, y: target.y, vx: 0, vy: 0, radius: 34, direction: 1, invulnerable: 0, dashCooldown: 0, dashTime: 0, dashId: 0, wakeClock: 0 };
 const bubbles = [];
 const enemies = [];
 const relics = [];
 const particles = [];
+const wakes = [];
 let motes = [];
 
 function loadImage(src) {
@@ -124,6 +125,7 @@ function loadImage(src) {
 function selectWorld(name) {
   if (!worlds[name]) return;
   selectedWorld = name;
+  wakes.length = 0;
   const world = worlds[name];
   document.documentElement.dataset.world = name;
   assets.hero.src = world.hero || '';
@@ -234,6 +236,7 @@ function resetGame() {
   enemies.length = 0;
   relics.length = 0;
   particles.length = 0;
+  wakes.length = 0;
   player.x = width * .42;
   player.y = height * .55;
   player.vx = 0;
@@ -242,6 +245,7 @@ function resetGame() {
   player.dashCooldown = 0;
   player.dashTime = 0;
   player.dashId = 0;
+  player.wakeClock = 0;
   target.x = player.x;
   target.y = player.y;
   startMission();
@@ -308,6 +312,7 @@ function spawnEnemy() {
     boss: false,
     hp: 1,
     lastDashId: -1,
+    wakeClock: Math.random() * .12,
   });
 }
 
@@ -323,6 +328,7 @@ function spawnBoss() {
     boss: true,
     hp: 3,
     lastDashId: -1,
+    wakeClock: 0,
   });
   showEvent(`⚑ ${worlds[selectedWorld].guardian} ظهر · اندفع خلاله 3 مرات`);
   tone(92, .5, 'sawtooth', .055);
@@ -385,6 +391,19 @@ function dash() {
   tone(360, .1, 'triangle', .04);
 }
 
+function spawnWake(x, y, radius, hostile, direction, strength = 1) {
+  if (reducedMotion && Math.random() > .5) return;
+  const life = hostile ? .62 : .82;
+  wakes.push({ x, y, radius, hostile, direction, strength, life, maxLife: life, phase: Math.random() * Math.PI * 2 });
+  if (wakes.length > 120) wakes.shift();
+}
+
+function wakeColor(hostile) {
+  if (hostile) return selectedWorld === 'atlas' ? '#b84c37' : '#ff607d';
+  if (selectedWorld === 'atlas') return '#ead9a8';
+  return selectedWorld === 'void' ? '#83f6ff' : '#f4ffff';
+}
+
 function update(dt) {
   updateMotes(dt);
   if (!state.running) return;
@@ -418,6 +437,12 @@ function update(dt) {
   player.x = clamp(player.x + player.vx * dt, 55, width - 55);
   player.y = clamp(player.y + player.vy * dt, 80, height - 45);
   if (Math.abs(player.vx) > 5) player.direction = Math.sign(player.vx);
+  player.wakeClock -= dt;
+  const playerSpeed = Math.hypot(player.vx, player.vy);
+  if (playerSpeed > 32 && player.wakeClock <= 0) {
+    spawnWake(player.x - player.direction * player.radius * 1.55, player.y, player.radius * .72, false, player.direction, player.dashTime > 0 ? 1.65 : 1);
+    player.wakeClock = player.dashTime > 0 ? .045 : clamp(.16 - playerSpeed / 4200, .075, .14);
+  }
 
   state.bubbleClock -= dt;
   state.goldClock -= dt;
@@ -490,6 +515,11 @@ function update(dt) {
     const direction = enemy.fromRight ? -1 : 1;
     enemy.x += direction * enemy.speed * (state.slowTime > 0 ? .36 : 1) * dt;
     enemy.y += (player.y - enemy.y) * .12 * dt + Math.sin(state.elapsed * 2 + enemy.phase) * 8 * dt;
+    enemy.wakeClock -= dt;
+    if (enemy.wakeClock <= 0) {
+      spawnWake(enemy.x - direction * enemy.size * .38, enemy.y, enemy.size * .12, true, direction, enemy.boss ? 1.5 : 1);
+      enemy.wakeClock = enemy.boss ? .085 : .14;
+    }
     const touching = distance(player, enemy) < player.radius + enemy.size * .24;
     if (touching && player.dashTime > 0 && enemy.lastDashId !== player.dashId) {
       enemy.lastDashId = player.dashId;
@@ -558,6 +588,13 @@ function update(dt) {
     particle.vx *= Math.pow(.18, dt);
     if (particle.life <= 0) particles.splice(i, 1);
   }
+  for (let i = wakes.length - 1; i >= 0; i--) {
+    const wake = wakes[i];
+    wake.life -= dt;
+    wake.radius += (wake.hostile ? 54 : 42) * wake.strength * dt;
+    wake.x -= wake.direction * (wake.hostile ? 19 : 11) * dt;
+    if (wake.life <= 0) wakes.splice(i, 1);
+  }
   updateHud();
 }
 
@@ -590,6 +627,7 @@ function draw() {
   drawMotes();
   bubbles.forEach(drawBubble);
   relics.forEach(drawRelic);
+  drawWakes();
   enemies.forEach(drawEnemy);
   drawPlayer();
   drawParticles();
@@ -599,6 +637,50 @@ function draw() {
     ctx.fillStyle = `rgba(255, 48, 82, ${state.flash * .24})`;
     ctx.fillRect(0, 0, width, height);
   }
+}
+
+function drawWakes() {
+  ctx.save();
+  ctx.globalCompositeOperation = selectedWorld === 'atlas' ? 'source-over' : 'screen';
+  for (const wake of wakes) {
+    const alpha = clamp(wake.life / wake.maxLife, 0, 1);
+    ctx.save();
+    ctx.translate(wake.x, wake.y);
+    ctx.strokeStyle = wakeColor(wake.hostile);
+    ctx.globalAlpha = alpha * (wake.hostile ? .76 : .68);
+    ctx.shadowColor = ctx.strokeStyle;
+    ctx.shadowBlur = wake.hostile ? 19 : 15;
+    ctx.lineWidth = (wake.hostile ? 3.2 : 2.4) * wake.strength;
+    if (wake.hostile) {
+      ctx.rotate(wake.phase + state.elapsed * .45 * wake.direction);
+      ctx.beginPath();
+      for (let point = 0; point < 18; point++) {
+        const angle = point / 18 * Math.PI * 2;
+        const spike = point % 2 ? .72 : 1.12;
+        const x = Math.cos(angle) * wake.radius * 1.6 * spike;
+        const y = Math.sin(angle) * wake.radius * .72 * spike;
+        if (point) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.globalAlpha = alpha * .055;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, wake.radius * 1.75, wake.radius * .68, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = alpha * .68;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, wake.radius * 1.75, wake.radius * .68, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha *= .45;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, wake.radius * 1.28, wake.radius * .46, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
 }
 
 function drawLightShafts() {
@@ -923,6 +1005,7 @@ function selfCheck() {
   console.assert(rankFor(100) === 2, 'rank thresholds');
   console.assert(enemyFacing(true) === -1 && enemyFacing(false) === 1, 'enemy faces its travel direction');
   console.assert(enemyFacing(true) * worlds.reef.predatorFacing === 1, 'left-facing reef sprite keeps its travel direction');
+  console.assert(wakeColor(false) !== wakeColor(true), 'friendly and hostile wakes stay visually distinct');
 }
 
 selfCheck();
