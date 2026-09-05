@@ -194,7 +194,9 @@ export class OceanAudio {
     if (event === 'pearl') {
       const note = NOTES[clamp(Math.floor(combo) - 1, 0, 4)];
       tone(note, .25, .15); tone(note * 2, .12, .027, .025);
-    } else if (event === 'gold') chime([659.25, 880, 1318.5]);
+    } else if (event === 'breach') { wash(700,2800,.45,.3);tone(420,.3,.035,0,900); }
+    else if (event === 'splash') { wash(1800,180,.8,.45);wash(340,130,.45,.18); }
+    else if (event === 'gold') chime([659.25, 880, 1318.5]);
     else if (event === 'treasure') chime([392,523.25,659.25,1046.5],.11,.14);
     else if (event === 'magnet') {wash(300,1700,.45,.12);chime([440,659.25],.1,.1);}
     else if (event === 'gate') {wash(250,2100,.65,.3);chime([392,783.99],.1,.1);}
@@ -219,12 +221,12 @@ export class OceanAudio {
     if(['hurt','block','defeated','dash','treasure','frenzy','win','lose','start'].includes(event))this.nextWarning=Math.max(this.nextWarning,now+.65);
     if(event!=='bubble'&&event!=='warning')this.nextBubble=Math.max(this.nextBubble,now+1.1);
   }
-  update({ world, speed = 0, boosting = false, threat = null }) {
+  update({ world, speed = 0, boosting = false, threat = null, aboveWater = false }) {
     if (!this.master || !this.enabled || this.mode !== 'playing' || this.context.state === 'suspended') return;
     const now = this.context.currentTime;
     if (now < this.nextUpdate) return;
     this.nextUpdate = now + .08;
-    const tint = world === 'abyss' ? 170 : world === 'kelp' ? 270 : 420;
+    const tint = aboveWater ? 1400 : world === 'abyss' ? 170 : world === 'kelp' ? 270 : 420;
     this.smooth(this.bed.filter.frequency, tint + Math.sin(now * .4) * 45, .4);
     this.smooth(this.bed.gain.gain, .16 + Math.sin(now * .65) * .018, .3);
     this.smooth(this.swim.filter.frequency, 420 + clamp(speed, 0, 1) * 800 + (boosting ? 1100 : 0));

@@ -3,8 +3,8 @@ import { mkdir, copyFile, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
-await build({absWorkingDir:root,entryPoints:['ocean.js'],bundle:true,format:'iife',target:'es2020',minify:true,outfile:'ocean.bundle.js',legalComments:'inline'});
-const files = ['index.html','style.css','mobile.css','ocean.bundle.js','pwa.js','manifest.webmanifest',
+await build({absWorkingDir:root,entryPoints:['free-ocean.js'],bundle:true,format:'iife',target:'es2020',minify:true,outfile:'ocean.bundle.js',legalComments:'inline'});
+const files = ['index.html','style.css','mobile.css','expedition.css','ocean.bundle.js','pwa.js','manifest.webmanifest',
   'icons/icon-192.png','icons/icon-512.png','icons/maskable-512.png','icons/apple-touch-icon.png'];
 await mkdir(new URL('../dist/icons/',import.meta.url),{recursive:true});
 const revision = createHash('sha256');

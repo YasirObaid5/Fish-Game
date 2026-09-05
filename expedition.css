@@ -1,0 +1,64 @@
+/* Free-swimming UI: directions stay in the HUD, destinations live in the journal. */
+.vignette { opacity:.35; }
+.hud, .topbar { text-shadow:0 1px 4px #032532bb; }
+.compass { background:#052d3838; border-radius:7px; padding:5px 8px; }
+#sound:disabled, #volume:disabled { cursor:not-allowed; }
+html[data-hurt="true"] .vignette { box-shadow:inset 0 0 110px #cc5f4388; }
+.menu-copy { width:min(435px,40vw); }
+.menu-copy h1 { font-size:clamp(42px,4.2vw,65px); }
+.menu-copy .description { margin-block:18px 22px; }
+.journal-button { display:flex; align-items:center; justify-content:space-between; gap:14px; border:1px solid #d6d9be36; border-radius:4px; background:#0c3d454f; color:#e9d7b8; padding:10px 13px; min-height:44px; font-size:12px; }
+#menu-atlas { width:100%; margin-top:10px; }
+#menu-atlas small { color:#b7d3c6; font-size:10px; }
+.compass { width:300px; top:30px; color:#cbe5d6; }
+.compass b { font-weight:500; color:#f0dbaf; }
+.compass .destination-line { justify-content:center; align-items:center; gap:9px; margin-top:12px; font-size:12px; }
+#bearing { display:inline-block; font-size:25px; color:#edcc8c; line-height:1; }
+#destination-distance { white-space:nowrap; color:#c7ded2; }
+.quest-card { position:absolute; left:4vw; top:211px; width:220px; display:grid; gap:8px; background:linear-gradient(90deg,#052630ba,transparent); padding:12px 15px; border-inline-end:1px solid #bfdcc545; }
+.quest-card>small { display:flex; justify-content:space-between; color:#adccbf; font-size:10px; }.quest-card>b { font-size:15px; font-weight:500; color:#efddb8; }.quest-card>span { font-size:11px; color:#c5d9cc; line-height:1.7; }.quest-card progress { margin-top:0; }
+.hud-atlas { position:absolute; pointer-events:auto; left:4vw; top:158px; min-width:140px; }
+.boost-status { bottom:92px; width:170px; }
+#skill-label { display:block; font-size:10px; color:#b9dacc; margin-top:14px; }
+#radar-shell { position:absolute; right:3vw; bottom:45px; width:180px; color:#b8d8ca; font-size:9px; }
+#radar-shell>span { display:flex; justify-content:space-between; margin-bottom:3px; padding-inline:8px; }#radar-shell b { font:9px Arial; }
+#radar { width:180px; height:180px; border-radius:50%; background:radial-gradient(#083d4b70,#022833a0); border:1px solid #a0d4c12d; }
+.event-label { position:absolute; bottom:72px; left:50%; transform:translateX(-50%); max-width:45vw; text-align:center; color:#c9dec9; font-size:11px; }
+.threat { position:absolute; top:115px; left:50%; transform:translateX(-50%); border:1px solid #f09d7660; border-radius:5px; padding:10px 17px; background:#492a2be6; color:#ffe5c8; max-width:60vw; text-align:center; font-size:12px; }
+.swim-actions { display:grid; grid-template-columns:56px 72px; grid-template-rows:44px 44px 44px; gap:8px; align-items:center; }
+.swim-actions button { min-height:44px; border:1px solid #bbdace55; background:#07313d8c; border-radius:7px; touch-action:none; color:#eee2bf; font-size:11px; }
+#touch-rise { grid-area:1/1; }#touch-dive { grid-area:2/1; }#touch-boost { grid-area:1/2/3/3; }#touch-skill { grid-area:3/1/4/3; }
+#touch-skill[data-locked="true"] { color:#a4bfb6; border-style:dashed; }
+#water-drops { position:absolute; inset:0; pointer-events:none; opacity:0; z-index:2; background:radial-gradient(ellipse 8px 14px at 15% 25%,#b0fff433,transparent 80%),radial-gradient(ellipse 12px 18px at 84% 32%,#d6fff544,transparent 80%),radial-gradient(ellipse 8px 13px at 27% 75%,#a8ded544,transparent 80%),linear-gradient(0deg,#a8e8df15,transparent 25%); }
+#atlas { width:min(760px,calc(100vw - 28px)); max-height:86dvh; overflow:auto; padding:28px; color:#e8e8d4; background:linear-gradient(145deg,#0b3e49,#052932); border:1px solid #c8d9bd55; border-radius:12px; }
+#atlas::backdrop { background:#001620b8; backdrop-filter:blur(7px); }.atlas-heading { display:flex; justify-content:space-between; align-items:center; }.atlas-heading small { font-size:11px; color:#b0cbbd; }.atlas-heading h2 { font-size:32px; font-weight:450; margin:6px 0; color:#f3ddae; }
+#atlas-stats { font-size:12px; color:#b0d0c0; padding-bottom:16px; border-bottom:1px solid #c1d9c529; }#atlas h3 { font-size:14px; font-weight:500; margin-top:26px; }
+#destination-list { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }.destination-choice { display:grid; gap:7px; text-align:start; min-height:72px; border:1px solid #ccdec530; background:#092b3366; padding:12px; border-radius:5px; }.destination-choice[aria-pressed="true"] { border-color:#e7cd9299; background:#d3c89f12; }.destination-choice b { font-size:12px; font-weight:500; }.destination-choice small { color:#9fc0b0; font-size:10px; }
+.race-callout { display:flex; justify-content:space-between; align-items:center; gap:18px; background:#a5ddd311; border:1px solid #b3d3bd38; border-radius:5px; margin-top:18px; padding:14px; }.race-callout b { font-size:13px; }.race-callout p { font-size:10px; color:#bdd7c8; line-height:1.7; margin-bottom:0; }#start-race { min-height:44px; border:0; border-radius:4px; background:#e8d0a0; color:#1b3f43; padding:10px 15px; white-space:nowrap; font-size:12px; }
+#medal-list { display:grid; grid-template-columns:1fr 1fr; gap:10px; }.medal { display:flex; gap:14px; border:1px solid #c2d8c029; border-radius:6px; padding:16px; background:#03242f70; }.medal-mark { display:grid; place-items:center; flex:0 0 44px; height:49px; border:1px solid #aaa78066; border-radius:50% 50% 46% 46%; font:500 23px Georgia; color:#b9bda1; background:linear-gradient(#7d98722a,#a4baa30a); }.medal.unlocked { border-color:#e8c88d66; }.medal.unlocked .medal-mark { color:#173f45; border-color:#f7d9a3; background:linear-gradient(#ffe6b2,#c79f59); box-shadow:0 0 16px #eccc7633; }.medal h3 { margin:0 0 8px!important; }.medal b { font-size:11px; color:#e1d4aa; font-weight:500; }.medal p { font-size:11px; line-height:1.8; color:#a8c8ba; margin:7px 0; }.medal small { font-size:10px; color:#b4d0be; }.medal progress { margin-top:9px; }
+.atlas-note,#atlas details { color:#9fbeaf; font-size:11px; line-height:1.9; margin-top:22px; }#atlas summary { cursor:pointer; min-height:40px; color:#e1d1b0; }
+@media(pointer:coarse),(max-width:700px){
+  .menu-copy { width:100%; }.menu-copy h1 { font-size:clamp(32px,8vw,47px); }.menu-copy .description { margin-block:12px; }
+  .compass { top:calc(max(12px,env(safe-area-inset-top)) + 60px); width:min(245px,70vw); left:50%; right:auto; transform:translateX(-50%); }
+  .compass .destination-line { margin-top:7px; font-size:10px; gap:6px; }.compass>div:first-child { font-size:10px; }#bearing { font-size:20px; }
+  .score { top:137px; }.health { top:140px; }.score b { font-size:28px; }
+  .quest-card { top:206px; left:auto; right:max(16px,env(safe-area-inset-right)); width:152px; padding:8px 10px; gap:6px; background:#062a3680; }.quest-card>b { font-size:12px; }.quest-card>span { display:none; }.quest-card>small { font-size:9px; }
+  .hud-atlas { top:204px; left:max(16px,env(safe-area-inset-left)); min-width:105px; padding:8px 10px; font-size:11px; }.hud-atlas kbd { display:none; }
+  #radar-shell { display:none; }.boost-status { bottom:calc(max(28px,env(safe-area-inset-bottom)) + 147px); left:max(7vw,env(safe-area-inset-left)); width:100px; font-size:10px; }#skill-label { display:none; }
+  html[data-mode="playing"] .touch-controls { bottom:max(28px,env(safe-area-inset-bottom)); align-items:flex-end; }
+  .event-label { bottom:calc(max(28px,env(safe-area-inset-bottom)) + 178px); max-width:85vw; width:85vw; font-size:9px; }
+  .threat { top:282px; max-width:85vw; width:max-content; font-size:10px; padding:8px 10px; }.toast { top:32%; z-index:7; }
+  #atlas { padding:19px; }.atlas-heading h2 { font-size:27px; }#destination-list { grid-template-columns:1fr 1fr; }#medal-list { grid-template-columns:1fr; }.race-callout { gap:9px; padding:11px; }
+}
+@media(pointer:coarse) and (orientation:landscape) and (max-height:540px){
+  .menu-copy { width:min(420px,55vw); }.menu-copy h1 { font-size:30px; }
+  .compass { top:max(17px,env(safe-area-inset-top)); width:30vw; }.compass .destination-line { margin-top:5px; }
+  .score { top:75px; }.health { top:76px; }.quest-card { top:140px; right:max(16px,env(safe-area-inset-right)); width:150px; }
+  .hud-atlas { top:113px; min-width:115px; }.threat { top:83px; max-width:40vw; }.toast { top:27%; max-width:45vw; }
+  .boost-status { bottom:139px; width:100px; }.event-label { bottom:31px; width:40vw; max-width:40vw; }
+  .swim-actions { grid-template-columns:50px 66px; grid-template-rows:44px 44px; gap:6px; }#touch-boost { width:66px; height:66px; }#touch-skill { position:absolute; bottom:111px; right:0; width:122px; min-height:38px; }
+  html[data-mode="playing"] .touch-controls { bottom:max(25px,env(safe-area-inset-bottom)); }
+  #destination-list { grid-template-columns:repeat(3,1fr); }#medal-list { grid-template-columns:1fr 1fr; }
+}
+@media(max-height:610px) and (orientation:portrait){.event-label { display:none; }.threat { top:276px; }.quest-card { top:190px; }.hud-atlas { top:188px; }}
+@media(max-width:359px){.quest-card { width:138px; }.hud-atlas { min-width:100px; }.swim-actions { grid-template-columns:50px 64px; }#touch-boost { width:64px; height:64px; }.medal { padding:12px; gap:10px; }}
