@@ -8,6 +8,9 @@ const files = ['index.html','style.css','mobile.css','ocean.bundle.js','pwa.js',
   'icons/icon-192.png','icons/icon-512.png','icons/maskable-512.png','icons/apple-touch-icon.png'];
 await mkdir(new URL('../dist/icons/',import.meta.url),{recursive:true});
 const revision = createHash('sha256');
+const headers = await readFile(new URL('../_headers',import.meta.url));
+revision.update(headers);
+await copyFile(new URL('../_headers',import.meta.url),new URL('../dist/_headers',import.meta.url));
 const precache = [];
 for (const name of files) {
   const bytes = await readFile(new URL('../'+name,import.meta.url));
