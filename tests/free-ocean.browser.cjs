@@ -50,6 +50,21 @@ const distance = (a,b) => Math.hypot(...a.map((n,i)=>n-b[i]));
   await page.mouse.move(640,410);await page.mouse.down();await page.mouse.move(820,340,{steps:8});await page.mouse.up();await sim(.2);
   const looked=await state();assert.ok(looked.swimmer.yaw>.6&&looked.swimmer.pitch>.15,'Dragging the sea aims freely in yaw and pitch');
   assert.ok(distance(looked.camera,viewBefore.camera)>1,'Follow camera rotates with the swimmer');
+
+  // Regression: looking at the surface used to turn forward into an unwanted jump.
+  await place(85,8,80,0,1.25);
+  await hold('ArrowUp',1.5);after=await state();
+  assert.ok(Math.abs(after.position[1]-8)<.01 && after.position[2]<70 && !after.swimmer.airborne,'Forward is horizontal even after looking up');
+  await place(85,8,80,0,-1.25);
+  await page.locator('#cruise-toggle').click();await sim(1.5);after=await state();
+  assert.ok(after.cruising && after.position[2]<70 && Math.abs(after.position[1]-8)<.01,'Visible cruise keeps swimming after click release without diving');
+  assert.equal(await page.locator('#cruise-toggle').getAttribute('aria-pressed'),'true');
+  await page.keyboard.press('c');await sim(2);
+  assert.ok(!(await state()).cruising && (await state()).swimmer.speed<.03,'C switches off and decelerates');
+  await page.keyboard.press('c');await hold('ArrowDown',.5);assert.equal((await state()).cruising,false,'Reverse cancels cruise');
+  await page.keyboard.press('c');await page.locator('#pause').click();await page.locator('#start').click();
+  assert.equal((await state()).cruising,false,'Pause/resume never silently restarts cruise');
+  await place(85,8,80);
   await shot('swimming');
 
   // Score labels must match real changes, including a negative damage label.
@@ -154,8 +169,23 @@ const distance = (a,b) => Math.hypot(...a.map((n,i)=>n-b[i]));
   const phone=await mobile.newPage();phone.on('pageerror',e=>errors.push(e.message));
   await phone.goto(base+'/?test=1&free-mobile=1');await phone.waitForFunction(()=>document.documentElement.dataset.engineVersion==='free-ocean');
   await phone.locator('#start').tap();await phone.evaluate(()=>window.__ocean.place(85,8,80));
+  await phone.evaluate(()=>window.__ocean.aim(0,1.25));
+  await phone.locator('#cruise-toggle').tap();await phone.evaluate(()=>window.__ocean.simulate(1.5));
+  let cruiseState=await phone.evaluate(()=>window.__ocean.snapshot());
+  assert.ok(cruiseState.cruising && cruiseState.position[2]<70 && Math.abs(cruiseState.position[1]-8)<.01,'Phone forward lock maintains depth after an upward look');
+  await phone.locator('#cruise-toggle').tap();await phone.evaluate(()=>window.__ocean.simulate(2));
+  assert.ok(!(await phone.evaluate(()=>window.__ocean.snapshot())).cruising,'Second tap stops cruise');
+  await phone.evaluate(()=>{window.__ocean.place(85,8,80);window.__ocean.aim(0);});
   const cdp=await mobile.newCDPSession(phone),pad=await phone.locator('#stick').boundingBox(),rise=await phone.locator('#touch-rise').boundingBox(),boost=await phone.locator('#touch-boost').boundingBox();
   const center={x:pad.x+pad.width/2,y:pad.y+pad.height/2,id:1};
+  await phone.evaluate(()=>window.__ocean.aim(0,1.25));
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[center]});
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{...center,y:center.y-35}]});
+  await phone.evaluate(()=>window.__ocean.simulate(1.5));
+  const padForward=await phone.evaluate(()=>window.__ocean.snapshot());
+  assert.ok(padForward.position[2]<72 && Math.abs(padForward.position[1]-8)<.01 && !padForward.swimmer.airborne,'Phone forward pad cannot rise or jump after looking up');
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  await phone.evaluate(()=>{window.__ocean.place(85,8,80);window.__ocean.aim(0);});
   const steering={...center,x:center.x+22,y:center.y-22};
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[center]});
   await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[steering]});
@@ -167,7 +197,7 @@ const distance = (a,b) => Math.hypot(...a.map((n,i)=>n-b[i]));
   await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
   for(const viewport of [{width:390,height:844},{width:844,height:390}]){
     await phone.setViewportSize(viewport);await phone.waitForTimeout(150);
-    for(const selector of ['#stick','#touch-rise','#touch-dive','#touch-boost','#touch-skill','#open-atlas','#pause']){
+    for(const selector of ['#cruise-toggle','#stick','#touch-rise','#touch-dive','#touch-boost','#touch-skill','#open-atlas','#pause']){
       const b=await phone.locator(selector).boundingBox();assert.ok(b&&b.x>=0&&b.y>=0&&b.x+b.width<=viewport.width+1&&b.y+b.height<=viewport.height+1,selector+' fits '+JSON.stringify(viewport));
     }
     ms=await phone.evaluate(()=>window.__ocean.snapshot());assert.ok(near(ms.renderSize[0]/ms.renderSize[1],viewport.width/viewport.height,.015));

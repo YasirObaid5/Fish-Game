@@ -62,3 +62,20 @@ html[data-hurt="true"] .vignette { box-shadow:inset 0 0 110px #cc5f4388; }
 }
 @media(max-height:610px) and (orientation:portrait){.event-label { display:none; }.threat { top:276px; }.quest-card { top:190px; }.hud-atlas { top:188px; }}
 @media(max-width:359px){.quest-card { width:138px; }.hud-atlas { min-width:100px; }.swim-actions { grid-template-columns:50px 64px; }#touch-boost { width:64px; height:64px; }.medal { padding:12px; gap:10px; }}
+
+/* Empty space between touch controls must not swallow other HUD buttons or look drags. */
+.touch-controls { pointer-events:none; }
+.touch-controls #stick, .touch-controls button { pointer-events:auto; }
+/* Explicit, latched forward motion is separate from the depth buttons. */
+.cruise-toggle { position:absolute; pointer-events:auto; left:4vw; bottom:158px; min-height:44px; display:flex; align-items:center; justify-content:center; gap:12px; padding:9px 13px; border:1px solid #b9d9c780; border-radius:7px; background:#07313de8; color:#f4e5c4; font-size:12px; touch-action:manipulation; }
+.cruise-toggle[aria-pressed="true"] { background:#dce7c8; border-color:#efffd8; color:#163b40; text-shadow:none; }
+.cruise-toggle:focus-visible { outline:2px solid #ffe5a5; outline-offset:3px; }
+@media(pointer:coarse),(max-width:700px){
+  .cruise-toggle { left:max(7vw,env(safe-area-inset-left)); bottom:calc(max(28px,env(safe-area-inset-bottom)) + 126px); width:116px; padding:8px; font-size:11px; }
+  .cruise-toggle kbd { display:none; }
+  .boost-status { bottom:calc(max(28px,env(safe-area-inset-bottom)) + 187px); }
+}
+@media(pointer:coarse) and (orientation:landscape) and (max-height:540px){
+  .cruise-toggle { bottom:calc(max(25px,env(safe-area-inset-bottom)) + 114px); }
+  .boost-status { display:none; }
+}

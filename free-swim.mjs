@@ -63,7 +63,8 @@ export function stepSwimmer(state, input = {}, delta = 0) {
     if (p.y < SURFACE_Y - 1.2) state.breachReady = true;
     let throttle = axis(input.throttle);
     if (state.boost > 0 && throttle === 0 && !axis(input.lift)) throttle = 1;
-    const heading = direction(state.yaw, state.pitch);
+    // View pitch never changes forward thrust: depth has its own explicit control.
+    const heading = direction(state.yaw, 0);
     const target = { x: heading.x * throttle, y: heading.y * throttle + axis(input.lift) * .8, z: heading.z * throttle };
     const length = Math.max(1, Math.hypot(target.x, target.y, target.z));
     const speed = state.boost > 0 ? 21 : throttle < 0 ? 7.5 : 10;

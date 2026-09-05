@@ -22,7 +22,7 @@ test('idle stays still; forward, reverse and full 360-degree turning remain boun
   run(s, 3); assert.ok(s.speed < .01, 'release decelerates instead of auto-scrolling');
 });
 
-test('pitch steering and independent vertical controls move through all three axes', () => {
+test('view pitch is independent of forward thrust; lift moves through the third axis', () => {
   const s = createSwimmer();
   run(s, 1, { lift: -1 }); assert.ok(s.position.y < 4.5);
   run(s, 1, { lift: 1 }); assert.ok(s.velocity.y > 7);
@@ -30,7 +30,8 @@ test('pitch steering and independent vertical controls move through all three ax
   stepSwimmer(s, { lookPitch: .7, lookYaw: .8 }, .025);
   const before = { ...s.position };
   run(s, .5, { throttle: 1 });
-  assert.ok(s.position.x > before.x && s.position.y > before.y && s.position.z < before.z);
+  assert.ok(s.position.x > before.x && s.position.z < before.z);
+  assert.ok(s.velocity.y < 2, 'prior rise slows instead of being sustained by forward');
   stepSwimmer(s, { lookPitch: 500 }, .025); assert.equal(s.pitch, 1.35);
   stepSwimmer(s, { lookPitch: -500 }, .025); assert.equal(s.pitch, -1.35);
 });
@@ -197,5 +198,16 @@ test('a chase cannot persist forever and hunter limits remain valid on a long pa
     assert.ok(h.position.y <= SURFACE_Y - .7);
     assert.ok(h.position.y >= terrainHeight(h.position.x, h.position.z) + 1 - 1e-8);
     assert.ok(Math.hypot(h.position.x, h.position.z) <= WORLD_RADIUS + 1e-8);
+  }
+});
+
+test('forward and reverse maintain depth even when the view points steeply up or down', () => {
+  for (const pitch of [-1.35, 0, 1.35]) for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) for (const throttle of [-1, 1]) {
+    const s = createSwimmer(); s.position = point(0, 8, 0); s.yaw = yaw; s.pitch = pitch;
+    const events = run(s, 2.5, { throttle, boost: true });
+    assert.equal(s.position.y, 8, 'view angle cannot cause vertical motion');
+    assert.equal(s.airborne, false);
+    assert.ok(!events.some(e => e.type === 'breach'));
+    assert.ok(Math.hypot(s.position.x, s.position.z) > 15, 'full forward/reverse thrust remains available');
   }
 });
