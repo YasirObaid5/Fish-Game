@@ -6,7 +6,9 @@
     "build": "node scripts/build.mjs",
     "test": "node --test tests/gameplay.test.mjs tests/discoveries.test.mjs",
     "test:tides": "node tests/tides.browser.cjs",
-    "test:audio": "node tests/audio.browser.cjs"
+    "test:audio": "node tests/audio.browser.cjs",
+    "test:pwa": "node tests/pwa.browser.cjs",
+    "icons": "node scripts/render-icons.cjs"
   },
   "devDependencies": {
     "esbuild": "0.25.9",

@@ -111,3 +111,17 @@ html:not([data-mode="playing"]) #score-feedback, html:not([data-mode="playing"])
   .score-pop b { font-size: 29px; }.score-pop small { font-size: 10px; }
   .depth-cue { font-size: 9px; padding: 4px 6px; }
 }
+
+/* Installation is optional and never overlays an active journey. */
+.app-install { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 14px; margin-top: 8px; }
+#install-app { border: 1px solid #b7ded344; background: #062a3480; border-radius: 4px; min-height: 44px; padding: 8px 14px; color: #e8d0a4; font-size: 12px; }
+#install-app span { margin-inline-start: 10px; }
+#pwa-status { color: #a5c8bc; font-size: 10px; }
+html[data-mode="paused"] .app-install, html[data-mode="ended"] .app-install { justify-content: center; }
+.pwa-update { position: absolute; z-index: 9; inset-inline-start: max(16px,env(safe-area-inset-right)); bottom: max(18px,env(safe-area-inset-bottom)); max-width: calc(100% - 32px); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; background: #062630f5; border: 1px solid #ccb07a; border-radius: 6px; font-size: 12px; box-shadow: 0 6px 30px #021a2c80; }
+#update-app { border: 0; border-radius: 4px; padding: 10px 14px; min-height: 44px; background: #ead0a0; color: #163c42; }
+#install-help { width: min(440px,calc(100vw - 32px)); max-height: 85dvh; overflow: auto; color: #e5e9db; background: #072e39; padding: 26px; border: 1px solid #d6c19470; border-radius: 12px; text-align: start; }
+#install-help::backdrop { background: #00131cbb; backdrop-filter: blur(6px); }
+#install-help h2 { font-size: 22px; color: #ecd0a0; margin-block: 0 16px; }
+#install-help p { font-size: 13px; line-height: 1.9; color: #c2d4cc; }
+#install-help .primary { margin-top: 24px; }

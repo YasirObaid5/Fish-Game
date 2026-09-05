@@ -211,7 +211,8 @@ function setWorld(name){
 function init(){
   renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,coarse?1.35:1.7));
-  renderer.setSize(innerWidth,innerHeight);
+  // CSS owns the canvas size so rotation cannot retain the initial inline dimensions.
+  renderer.setSize(innerWidth,innerHeight,false);
   renderer.toneMapping=T.ACESFilmicToneMapping; renderer.toneMappingExposure=1.05;
   renderer.shadowMap.enabled=true; renderer.shadowMap.type=T.PCFShadowMap;
   scene=new T.Scene(); camera=new T.PerspectiveCamera(53,innerWidth/innerHeight,.1,160);
@@ -374,7 +375,7 @@ function start(){
   keys.clear();pointer.active=false;stick.x=stick.y=0;
   // The first pearl trail leads out from the player's starting position.
   for(let i=0;i<8;i++)item(i===7?'gold':'pearl',Math.sin(i*.5)*1.3,4.4,-8-i*2.5);
-  setMode('playing');canvas.focus();toast('الأسهم للسباحة · Space للاندفاع عبر المفترسات');sfx.play('start');
+  setMode('playing');canvas.focus();toast(coarse?'اسحب دائرة السباحة · زر الاندفاع يحميك من المفترسات':'الأسهم للسباحة · Space للاندفاع عبر المفترسات');sfx.play('start');
 }
 function setMode(value){
   sfx.setMode(value);syncSoundUI();

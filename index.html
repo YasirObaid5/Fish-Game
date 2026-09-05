@@ -4,10 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#062c35">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="أعماق">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="description" content="أعماق — رحلة سباحة ثلاثية الأبعاد بين الشعاب المرجانية. اجمع اللآلئ، تفادَ المفترسات واكتشف البحر.">
   <title>أعماق — رحلة تحت السطح</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 40 40%27%3E%3Crect width=%2740%27 height=%2740%27 rx=%279%27 fill=%27%23063841%27/%3E%3Cpath d=%27M7 20Q20 3 33 20Q20 37 7 20L4 10V30Z%27 fill=%27%23e8c588%27/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=20260905-tides">
+  <link rel="stylesheet" href="style.css?v=20260905-pwa">
+  <link rel="stylesheet" href="mobile.css?v=20260905-pwa">
 </head>
 <body>
   <main id="app">
@@ -37,6 +44,10 @@
         <button id="start" class="primary" disabled><span>نُجهّز البحر…</span><b aria-hidden="true">←</b></button>
         <button id="home" class="text-button" hidden>العودة إلى الوجهات</button>
         <p class="best">أفضل رحلة <b id="best">0</b> <span>نقطة</span></p>
+        <div class="app-install">
+          <button id="install-app" type="button">تثبيت أعماق <span aria-hidden="true">↓</span></button>
+          <span id="pwa-status" role="status">نجهّز اللعب دون اتصال…</span>
+        </div>
       </div>
       <div class="specimen" aria-hidden="true"><span>01 / سمكة الشمس</span><small>رفيقتك في الأعماق</small></div>
       <footer class="menu-footer"><span>ثلاثة بحار. رحلة واحدة تخصّك.</span><span dir="ltr">YASIR OBAID · 2026</span></footer>
@@ -55,8 +66,17 @@
     <div class="instructions"><span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> السباحة</span><span><kbd>SPACE</kbd> اندفاع</span><span><kbd>ESC</kbd> توقف</span></div>
     <div id="touch" class="touch-controls"><div id="stick" aria-label="اسحب للتحرك"><i></i><span>اسحب للسباحة</span></div><button id="touch-boost" aria-label="اندفاع">اندفاع<br><small>↑</small></button></div>
     <div id="error" class="error" role="alert" hidden><h2>تعذّر تشغيل البحر</h2><p>فعّل تسريع الرسومات في متصفحك ثم أعد المحاولة.</p><button onclick="location.reload()" class="primary">إعادة المحاولة</button></div>
+    <div id="pwa-update" class="pwa-update" hidden><span>رحلة جديدة تنتظرك — تحديث جاهز</span><button id="update-app" type="button" hidden>تحديث وفتح اللعبة</button></div>
+    <dialog id="install-help" aria-labelledby="install-title">
+      <h2 id="install-title">أعماق على هاتفك</h2>
+      <p>على أندرويد: افتح اللعبة في Chrome، ثم افتح قائمة ⋮ واختر «الإضافة إلى الشاشة الرئيسية» ثم «تثبيت».</p>
+      <p>إذا فتحت الرابط داخل تطبيق آخر، اختر أولاً «الفتح في Chrome». على iPhone استخدم «مشاركة» ثم «إضافة إلى الشاشة الرئيسية».</p>
+      <p>انتظر ظهور «جاهزة للعب دون اتصال» قبل فصل الإنترنت. احتفظ ببيانات الموقع ليبقى أفضل إنجازك محفوظاً.</p>
+      <button id="close-install-help" class="primary" type="button">فهمت</button>
+    </dialog>
     <noscript>تحتاج اللعبة إلى تفعيل JavaScript.</noscript>
   </main>
-  <script src="ocean.bundle.js?v=20260905-tides" defer></script>
+  <script src="ocean.bundle.js?v=20260905-pwa" defer></script>
+  <script src="pwa.js?v=20260905-pwa" defer></script>
 </body>
 </html>

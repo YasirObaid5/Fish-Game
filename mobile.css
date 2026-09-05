@@ -1,0 +1,145 @@
+/* Android / installed-app layout. The ocean stays full-bleed; only the UI scrolls. */
+html, body { overscroll-behavior: none; }
+#app { height: 100%; height: 100dvh; }
+
+@media (pointer: coarse), (max-width: 700px) {
+  .topbar {
+    top: max(12px, env(safe-area-inset-top));
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    gap: 8px;
+  }
+  .edition { display: none; }
+  .wordmark { flex: 0 0 auto; gap: 8px; font-size: 21px; }
+  .wordmark svg { width: 30px; }
+  .toolbar { gap: 6px; }
+  .icon { width: 44px; height: 44px; flex: 0 0 44px; }
+  .volume-control { width: 52px; min-height: 44px; }
+  #volume { height: 44px; touch-action: pan-x; }
+  button, .wordmark { touch-action: manipulation; }
+
+  .menu {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    top: calc(max(12px, env(safe-area-inset-top)) + 66px);
+    padding: 12px
+      max(7vw, env(safe-area-inset-right))
+      max(40px, env(safe-area-inset-bottom))
+      max(7vw, env(safe-area-inset-left));
+    scroll-padding-block: 16px;
+    -webkit-overflow-scrolling: touch;
+    background: linear-gradient(0deg, #03212df2 0%, #032a3bd9 34%, transparent 88%);
+  }
+  .menu-copy,
+  html[data-mode="paused"] .menu-copy,
+  html[data-mode="ended"] .menu-copy {
+    position: relative;
+    inset: auto;
+    transform: none;
+    flex: 0 0 auto;
+    width: 100%;
+    margin-block-start: auto;
+  }
+  .eyebrow { margin-bottom: 8px; font-size: 10px; }
+  h1 { font-size: clamp(35px, 9vw, 50px); line-height: 1.18; }
+  h1 br { display: none; }
+  .description { font-size: 12px; margin-block: 12px 16px; line-height: 1.8; }
+  .worlds { gap: 6px; margin-bottom: 14px; }
+  .worlds button { min-height: 72px; padding: 9px 8px; }
+  .worlds b { margin-top: 5px; }
+  .primary { min-height: 48px; padding: 13px 19px; }
+  .text-button { min-height: 44px; margin-top: 5px; }
+  .best { margin-block: 10px 0; }
+  .app-install { flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  #install-app { min-height: 44px; }
+  #pwa-status { min-width: 0; line-height: 1.7; overflow-wrap: anywhere; }
+  .specimen, .menu-footer { display: none; }
+
+  .journey { top: calc(max(12px, env(safe-area-inset-top)) + 62px); width: min(240px, 60vw); }
+  .score { top: calc(max(12px, env(safe-area-inset-top)) + 112px); right: max(18px, env(safe-area-inset-right)); }
+  .score b { font-size: 32px; }
+  .health { top: calc(max(12px, env(safe-area-inset-top)) + 117px); left: max(18px, env(safe-area-inset-left)); }
+  .health small { max-width: 145px; line-height: 1.5; }
+  .rush-box { top: calc(max(12px, env(safe-area-inset-top)) + 204px); right: max(18px, env(safe-area-inset-right)); width: 122px; font-size: 10px; }
+  .rush-box small { display: none; }
+  .boost-status { left: max(7vw, env(safe-area-inset-left)); bottom: calc(max(36px, env(safe-area-inset-bottom)) + 126px); width: 108px; }
+  .objective { right: max(7vw, env(safe-area-inset-right)); bottom: calc(max(36px, env(safe-area-inset-bottom)) + 124px); max-width: 170px; font-size: 10px; }
+  .toast { max-width: min(85vw, 400px); padding: 10px 16px; font-size: 12px; }
+  .pwa-update { left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); max-width: 480px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; line-height: 1.5; }
+  .pwa-update > span { min-width: 0; }
+  #update-app { min-height: 44px; }
+  html[data-update-ready="true"]:not([data-mode="playing"]):not([data-mode="paused"]) .menu {
+    /* Shrink the scroll viewport, so focused buttons cannot hide behind the card. */
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 96px);
+    padding-bottom: 16px;
+  }
+}
+
+@media (pointer: coarse) {
+  .instructions, .boost-status kbd { display: none; }
+  html[data-mode="playing"] .touch-controls {
+    left: max(7vw, env(safe-area-inset-left));
+    right: max(7vw, env(safe-area-inset-right));
+    bottom: max(36px, env(safe-area-inset-bottom));
+  }
+  #stick, #touch-boost { flex-shrink: 0; user-select: none; -webkit-user-select: none; }
+  /* The label sits beneath the pad, above Android's gesture navigation area. */
+  #stick span { bottom: -19px; }
+}
+
+@media (max-width: 359px) {
+  .wordmark { gap: 6px; font-size: 18px; }
+  .wordmark svg { width: 26px; }
+  .wordmark small { font-size: 8px; letter-spacing: .2em; }
+  .toolbar { gap: 4px; }
+  .volume-control { width: 44px; }
+  .worlds b { font-size: 10px; }
+  .worlds small { font-size: 8px; }
+  .health small { max-width: 125px; }
+}
+
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 540px),
+       (max-width: 700px) and (orientation: landscape) and (max-height: 540px) {
+  .topbar { top: max(10px, env(safe-area-inset-top)); }
+  .menu {
+    top: calc(max(10px, env(safe-area-inset-top)) + 58px);
+    padding-top: 8px;
+    padding-bottom: max(22px, env(safe-area-inset-bottom));
+    background: linear-gradient(270deg, #021f30eb, #042934a6 48%, transparent 80%);
+  }
+  .menu-copy { width: min(420px, 55vw); }
+  html[data-mode="paused"] .menu-copy,
+  html[data-mode="ended"] .menu-copy { width: min(430px, 72vw); align-self: center; }
+  h1 { font-size: 32px; }
+  .description { margin-block: 8px 12px; }
+  .description br { display: none; }
+  .worlds { margin-bottom: 10px; }
+  .worlds button { min-height: 62px; padding-block: 7px; }
+  .world-dot { width: 15px; height: 15px; }
+  .journey { top: calc(max(10px, env(safe-area-inset-top)) + 9px); width: min(250px, 29vw); }
+  .journey div { font-size: 10px; gap: 5px; }
+  .journey progress { margin-top: 8px; }
+  .score { top: calc(max(10px, env(safe-area-inset-top)) + 62px); }
+  .score b { font-size: 28px; }
+  .health { top: calc(max(10px, env(safe-area-inset-top)) + 64px); }
+  .health span { font-size: 15px; }
+  .health small { margin-top: 4px; font-size: 10px; max-width: 160px; }
+  .rush-box { top: calc(max(10px, env(safe-area-inset-top)) + 138px); width: 136px; }
+  .rush-box progress { margin-top: 7px; }
+  .boost-status { bottom: calc(max(28px, env(safe-area-inset-bottom)) + 117px); }
+  .objective { display: none; }
+  .toast { top: calc(max(10px, env(safe-area-inset-top)) + 67px); max-width: 44vw; }
+  html[data-mode="playing"] .touch-controls { bottom: max(28px, env(safe-area-inset-bottom)); }
+  .results { margin-block: 12px; }
+  .results b { font-size: 26px; }
+}
+
+@media (orientation: landscape) and (max-height: 540px) and (max-width: 740px) {
+  /* Small landscape phones have no room for the wordmark beside the journey. */
+  html[data-mode="playing"] .wordmark { visibility: hidden; }
+  .journey { left: auto; right: max(18px, env(safe-area-inset-right)); transform: none; width: 35vw; }
+}
