@@ -1,4 +1,5 @@
 import * as T from './vendor/three.module.min.js';
+import { OceanAudio } from './ocean-audio.js';
 import { clamp, newRun, movement, advance, boost, collect, hit, overlaps, RUN_LENGTH } from './gameplay.mjs';
 
 const $ = id => document.getElementById(id);
@@ -11,7 +12,8 @@ const palettes = {
   abyss: { name: 'بحر الليل', water: 0x051b34, sky: 0x6198ce, sand: 0x344a60, rock: 0x35415e, coral: [0x8a67b7,0x6aa5c1,0x4fae9b,0xa5789f], kelp: 0x38688d, fog: .027, light: 1.5 },
 };
 let world = 'reef', mode = 'menu', run = newRun(), time = 0, flow = 0, last = 0, toastTime = 0;
-let waveClock = 0, nextWave = 18, guardianSpawned = false, sound = false, audio;
+let waveClock = 0, nextWave = 18, guardianSpawned = false;
+const sfx = new OceanAudio();
 let best = 0;
 try { best = Math.max(0, Number(localStorage.getItem('amaq-best')) || 0); } catch {}
 $('best').textContent = best;
@@ -311,33 +313,35 @@ function burst(pos,c){
 function toast(message){
   $('toast').textContent=message;$('toast').classList.add('visible');toastTime=3.2;
 }
-function beep(freq=600){
-  if(!sound)return;
-  try {
-    audio ||= new (window.AudioContext||window.webkitAudioContext)(); audio.resume();
-    const o=audio.createOscillator(),g=audio.createGain();
-    o.type='sine';o.frequency.setValueAtTime(freq,audio.currentTime);o.frequency.exponentialRampToValueAtTime(freq*.6,audio.currentTime+.18);
-    g.gain.setValueAtTime(.055,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+.25);
-    o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+.26);
-  } catch {}
+function syncSoundUI(){
+  const state=sfx.snapshot(),label=state.supported?(state.enabled?'كتم الصوت':'تشغيل الصوت'):'الصوت غير متاح في هذا المتصفح';
+  $('sound').setAttribute('aria-pressed',String(state.enabled));
+  $('sound').setAttribute('aria-label',label);$('sound').title=label;
+  $('sound').disabled=!state.supported;$('volume').disabled=!state.supported;
+  $('volume').value=Math.round(state.volume*100);
+  $('volume').setAttribute('aria-valuetext',state.muted?'مكتوم':Math.round(state.volume*100)+'٪');
 }
 function start(){
   if(mode==='paused'){setMode('playing');canvas.focus();return;}
+  sfx.stopVoices();
   items.forEach(disposeItem);items=[];
   for(const effect of [...wakes,...splashes]){scene.remove(effect.mesh);effect.mesh.material.dispose();}
   wakes=[];splashes=[];run=newRun();position.set(0,4.4,0);velocity.set(0,0,0);flow=0;nextWave=18;guardianSpawned=false;waveClock=0;
   keys.clear();pointer.active=false;stick.x=stick.y=0;
   // The first pearl trail leads out from the player's starting position.
   for(let i=0;i<8;i++)item(i===7?'gold':'pearl',Math.sin(i*.5)*1.3,4.4,-8-i*2.5);
-  setMode('playing');canvas.focus();toast('الأسهم للسباحة · Space للاندفاع عبر المفترسات');beep(420);
+  setMode('playing');canvas.focus();toast('الأسهم للسباحة · Space للاندفاع عبر المفترسات');sfx.play('start');
 }
 function setMode(value){
+  sfx.setMode(value);syncSoundUI();
+  if(value==='ended')sfx.play(run.won?'win':'lose');
   mode=value;document.documentElement.dataset.mode=value;keys.clear();pointer.active=false;stick.x=stick.y=0;
   $('toast').classList.remove('visible');toastTime=0;
   $('menu').hidden=value==='playing';$('hud').hidden=value==='menu';
   $('worlds').hidden=value!=='menu';$('home').hidden=value==='menu'||value==='playing';
   $('results').hidden=value!=='ended';
   $('pause').setAttribute('aria-label',value==='paused'?'متابعة الرحلة':'إيقاف مؤقت');
+  if(value==='playing')canvas.focus();
   if(value==='paused'){
     $('heading').textContent='خذ نَفَساً.';$('description').textContent='البحر ينتظرك. تابع رحلتك حين تكون مستعداً.';
     $('start').querySelector('span').textContent='متابعة الرحلة';$('start').focus();
@@ -356,7 +360,7 @@ function setMode(value){
   }
 }
 function togglePause(){if(mode==='playing')setMode('paused');else if(mode==='paused')setMode('playing');}
-function dash(){if(mode==='playing'&&boost(run)){emitWake(position,false,1.8);beep(280);}}
+function dash(){if(mode==='playing'&&boost(run)){emitWake(position,false,1.8);sfx.play('dash');}}
 function update(dt){
   const playing=mode==='playing';
   const travel=playing?advance(run,dt):mode==='menu'?dt*1.2:0;
@@ -388,7 +392,7 @@ function update(dt){
     position.x=clamp(position.x+velocity.x*dt,-6.3,6.3);
     position.y=clamp(position.y+velocity.y*dt,1.6,10);
     if(run.distance>=nextWave){spawnWave();nextWave+=18;}
-    if(run.distance>405&&!guardianSpawned){item('guardian',0,4.6,-85);guardianSpawned=true;toast('قرش الوادي أمامك · تفادَه أو اندفع عبره');}
+    if(run.distance>405&&!guardianSpawned){item('guardian',0,4.6,-85);guardianSpawned=true;sfx.play('guardian');toast('قرش الوادي أمامك · تفادَه أو اندفع عبره');}
     if(run.distance>670&&run.distance-travel<=670)toast('ضوء المخرج قريب · واصل السباحة');
     waveClock-=dt;if(waveClock<=0){emitWake(position,false,run.boost>0?1.7:.8);waveClock=run.boost>0?.07:.21;}
     for(let i=items.length-1;i>=0;i--){
@@ -404,18 +408,27 @@ function update(dt){
         if(danger){
           const result=hit(run);
           if(result!=='immune'){
-            burst(p,result==='hurt'?0xe2947d:0xb5edda);beep(result==='hurt'?140:780);
+            burst(p,result==='hurt'?0xe2947d:0xb5edda);sfx.play(result==='shield'?'block':result,{pan:clamp((p.x-position.x)/8,-1,1)});
             if(result==='shield')toast('الدرع حماك');
             if(result==='defeated')toast(obj.kind==='guardian'?'تجاوزت قرش الوادي! +25':'اندفاع ناجح +25');
             disposeItem(obj);items.splice(i,1);
           }
         } else {
-          collect(run,obj.kind);burst(p,obj.kind==='shield'?0x88edd3:0xf5d48c);beep(obj.kind==='gold'?1000:680);
+          collect(run,obj.kind);burst(p,obj.kind==='shield'?0x88edd3:0xf5d48c);sfx.play(obj.kind,{combo:run.combo,pan:clamp((p.x-position.x)/8,-1,1)});
           if(obj.kind==='shield')toast('درع المدّ · حماية لمدة 9 ثوانٍ');
           disposeItem(obj);items.splice(i,1);
         }
       } else if(p.z>14){disposeItem(obj);items.splice(i,1);}
     }
+    let threat=null;
+    for(const obj of items){
+      if(obj.kind!=='shark'&&obj.kind!=='guardian')continue;
+      const p=obj.mesh.position,dx=p.x-position.x,dy=p.y-position.y;
+      if(p.z>2||Math.hypot(dx,dy)>7)continue;
+      const distance=Math.hypot(dx,dy,p.z);
+      if(!threat||distance<threat.distance)threat={distance,x:dx};
+    }
+    sfx.update({world,speed:Math.hypot(velocity.x,velocity.y)/9,boosting:run.boost>0,threat});
     if(run.ended)setMode('ended');
   }
   const active=mode!=='menu';
@@ -471,21 +484,25 @@ function resize(){
 }
 function bind(){
   $('start').onclick=start;$('home').onclick=()=>setMode('menu');$('pause').onclick=togglePause;
-  $('sound').onclick=()=>{sound=!sound;$('sound').setAttribute('aria-pressed',String(sound));$('sound').setAttribute('aria-label',sound?'كتم الصوت':'تشغيل الصوت');beep();};
+  syncSoundUI();
+  $('sound').onclick=()=>{sfx.toggle();syncSoundUI();};
+  $('volume').oninput=e=>{sfx.setVolume(Number(e.target.value)/100);syncSoundUI();};
+  $('volume').addEventListener('focus',()=>{keys.clear();pointer.active=false;});
   $('fullscreen').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{toast('ملء الشاشة غير متاح في هذا المتصفح');}};
   document.querySelectorAll('#worlds button').forEach(b=>b.onclick=()=>setWorld(b.dataset.world));
   addEventListener('resize',resize);
   addEventListener('keydown',e=>{
     if(e.code==='Escape'){e.preventDefault();if(!e.repeat)togglePause();return;}
-    if(mode!=='playing')return;
+    if(mode!=='playing'||e.target.closest?.('input,select,textarea')||(e.code==='Space'&&e.target.closest?.('button,a')))return;
     if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyW','KeyA','KeyS','KeyD'].includes(e.code)){
       e.preventDefault();keys.add(e.code);pointer.active=false;
       if(e.code==='Space'&&!e.repeat)dash();
     }
   });
   addEventListener('keyup',e=>keys.delete(e.code));
-  addEventListener('blur',()=>{keys.clear();if(mode==='playing')setMode('paused');});
-  document.addEventListener('visibilitychange',()=>{if(document.hidden&&mode==='playing')setMode('paused');last=performance.now();});
+  addEventListener('blur',()=>{keys.clear();if(mode==='playing')setMode('paused');sfx.quiet();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){if(mode==='playing')setMode('paused');sfx.quiet();}last=performance.now();});
+  addEventListener('pagehide',()=>sfx.quiet());
   const steer=e=>{
     if(mode!=='playing')return;
     const rect=canvas.getBoundingClientRect();
@@ -505,7 +522,7 @@ function bind(){
   canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();setMode('paused');$('error').hidden=false;renderer.setAnimationLoop(null);});
   canvas.addEventListener('webglcontextrestored',()=>location.reload());
   if(new URLSearchParams(location.search).has('test')){
-    window.__ocean={simulate:seconds=>{for(let t=0;t<seconds;t+=.05)update(.05);renderer.render(scene,camera);},snapshot:()=>({mode,world,run:{...run},position:position.toArray(),camera:camera.position.toArray(),items:items.map(o=>({kind:o.kind,p:o.mesh.position.toArray()})),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries}),step:dt=>{update(dt);renderer.render(scene,camera);},place:(x,y)=>{position.set(clamp(x,-6.3,6.3),clamp(y,1.6,10),0);velocity.set(0,0,0);},spawn:(kind,x,y,z)=>item(kind,x,y,z)};
+    window.__ocean={simulate:seconds=>{for(let t=0;t<seconds;t+=.05)update(.05);renderer.render(scene,camera);},snapshot:()=>({mode,world,audio:sfx.snapshot(),run:{...run},position:position.toArray(),camera:camera.position.toArray(),items:items.map(o=>({kind:o.kind,p:o.mesh.position.toArray()})),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries}),step:dt=>{update(dt);renderer.render(scene,camera);},place:(x,y)=>{position.set(clamp(x,-6.3,6.3),clamp(y,1.6,10),0);velocity.set(0,0,0);},spawn:(kind,x,y,z)=>item(kind,x,y,z)};
   }
 }
 try{init();}catch(error){console.error('Ocean initialization failed',error);$('error').hidden=false;$('start').disabled=true;document.documentElement.dataset.engine='error';}

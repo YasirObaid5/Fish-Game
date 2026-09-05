@@ -4,7 +4,11 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/gameplay.test.mjs"
+    "test": "node --test tests/gameplay.test.mjs",
+    "test:audio": "node tests/audio.browser.cjs"
   },
-  "devDependencies": { "esbuild": "0.25.9" }
+  "devDependencies": {
+    "esbuild": "0.25.9",
+    "playwright": "1.62.1"
+  }
 }

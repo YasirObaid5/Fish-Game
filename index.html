@@ -7,7 +7,7 @@
   <meta name="description" content="أعماق — رحلة سباحة ثلاثية الأبعاد بين الشعاب المرجانية. اجمع اللآلئ، تفادَ المفترسات واكتشف البحر.">
   <title>أعماق — رحلة تحت السطح</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 40 40%27%3E%3Crect width=%2740%27 height=%2740%27 rx=%279%27 fill=%27%23063841%27/%3E%3Cpath d=%27M7 20Q20 3 33 20Q20 37 7 20L4 10V30Z%27 fill=%27%23e8c588%27/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=20260905-3d">
+  <link rel="stylesheet" href="style.css?v=20260905-audio">
 </head>
 <body>
   <main id="app">
@@ -18,7 +18,8 @@
       <span class="edition">رحلة تحت السطح <i></i> 01</span>
       <div class="toolbar">
         <button id="pause" class="icon" aria-label="إيقاف مؤقت" title="إيقاف مؤقت · Esc">Ⅱ</button>
-        <button id="sound" class="icon" aria-label="تشغيل الصوت" aria-pressed="false" title="الصوت"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 5-5 4H3v6h3l5 4V5Zm4 3c3 2 3 6 0 8m3-11c5 4 5 10 0 14"/></svg></button>
+        <button id="sound" class="icon" aria-label="كتم الصوت" aria-pressed="true" title="كتم الصوت"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 5-5 4H3v6h3l5 4V5Zm4 3c3 2 3 6 0 8m3-11c5 4 5 10 0 14"/><path class="mute-slash" d="M3 3 21 21"/></svg></button>
+        <label class="volume-control"><span class="sr-only">مستوى الصوت</span><input id="volume" type="range" min="0" max="100" step="5" value="65" dir="ltr" title="مستوى الصوت" aria-label="مستوى الصوت"></label>
         <button id="fullscreen" class="icon" aria-label="ملء الشاشة" title="ملء الشاشة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button>
       </div>
     </header>
@@ -53,6 +54,6 @@
     <div id="error" class="error" role="alert" hidden><h2>تعذّر تشغيل البحر</h2><p>فعّل تسريع الرسومات في متصفحك ثم أعد المحاولة.</p><button onclick="location.reload()" class="primary">إعادة المحاولة</button></div>
     <noscript>تحتاج اللعبة إلى تفعيل JavaScript.</noscript>
   </main>
-  <script src="ocean.bundle.js?v=20260905-3d" defer></script>
+  <script src="ocean.bundle.js?v=20260905-audio" defer></script>
 </body>
 </html>
