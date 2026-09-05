@@ -1,19 +1,24 @@
 import * as T from './vendor/three.module.min.js';
 import { OceanAudio } from './ocean-audio.js';
-import { clamp, newRun, movement, advance, boost, collect, hit, overlaps, RUN_LENGTH } from './gameplay.mjs';
+import { aquaticMaterial, waterSurface, lightShafts, UnderwaterView, WaterTrails } from './ocean-look.js';
+import { OceanDiscoveries, ENCOUNTERS, SPECIAL_KINDS, isHazard } from './ocean-discoveries.js';
+import { ScoreFeedback } from './score-feedback.js';
+import { clamp, newRun, movement, advance, boost, collect, hit, overlaps, openTreasure, nearMiss, RUSH_TARGET, RUN_LENGTH } from './gameplay.mjs';
 
 const $ = id => document.getElementById(id);
 const canvas = $('ocean');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const coarse = matchMedia('(pointer: coarse)').matches;
 const palettes = {
-  reef: { name: 'حدائق المرجان', water: 0x176678, sky: 0x9ee9e1, sand: 0xc1b992, rock: 0x637e72, coral: [0xde8569,0xc85f60,0xe5b27c,0x628f91], kelp: 0x487d62, fog: .022, light: 3.4 },
-  kelp: { name: 'غابة المدّ', water: 0x254f49, sky: 0xdce4b3, sand: 0x92966d, rock: 0x55644d, coral: [0xb38a62,0x8f9c53,0x788b55,0xbdac79], kelp: 0x849b4e, fog: .027, light: 2.9 },
-  abyss: { name: 'بحر الليل', water: 0x051b34, sky: 0x6198ce, sand: 0x344a60, rock: 0x35415e, coral: [0x8a67b7,0x6aa5c1,0x4fae9b,0xa5789f], kelp: 0x38688d, fog: .027, light: 1.5 },
+  reef: { name: 'حدائق المرجان', water: 0x12516a, sky: 0xb7e5d8, sand: 0xcbbb95, rock: 0x637e72, coral: [0xde8569,0xc85f60,0xe5b27c,0x628f91], kelp: 0x487d62, fog: .019, light: 3.8 },
+  kelp: { name: 'غابة المدّ', water: 0x254f49, sky: 0xdce4b3, sand: 0x92966d, rock: 0x55644d, coral: [0xb38a62,0x8f9c53,0x788b55,0xbdac79], kelp: 0x849b4e, fog: .023, light: 3.1 },
+  abyss: { name: 'بحر الليل', water: 0x051b34, sky: 0x6198ce, sand: 0x344a60, rock: 0x35415e, coral: [0x8a67b7,0x6aa5c1,0x4fae9b,0xa5789f], kelp: 0x38688d, fog: .023, light: 1.8 },
 };
 let world = 'reef', mode = 'menu', run = newRun(), time = 0, flow = 0, last = 0, toastTime = 0;
 let waveClock = 0, nextWave = 18, guardianSpawned = false;
 const sfx = new OceanAudio();
+let look, shafts, trails, discoveries, feedback, encounterIndex=0, routeSeed=0, damageFlash=0;
+const cueProjection=new T.Vector3(), collisionPoint=new T.Vector3(), cues=[];
 let best = 0;
 try { best = Math.max(0, Number(localStorage.getItem('amaq-best')) || 0); } catch {}
 $('best').textContent = best;
@@ -25,11 +30,26 @@ const tmp = new T.Object3D(), color = new T.Color(), viewTarget = new T.Vector3(
 const uniforms = { time: { value: 0 }, flow: { value: 0 } };
 const sphere = new T.SphereGeometry(1, 18, 12);
 const coralGeo = new T.SphereGeometry(1, 8, 6);
-const rockGeo = new T.IcosahedronGeometry(1, 2);
+const rockGeo = new T.IcosahedronGeometry(1, coarse?2:3);
 const branchGeo = new T.CylinderGeometry(.65, 1, 1, 6);
 const pearlGeo = new T.IcosahedronGeometry(.3, 2);
 const ringGeo = new T.TorusGeometry(1, .025, 5, 40);
-const bubbleGeo = new T.IcosahedronGeometry(.08, 0);
+const bubbleGeo = new T.IcosahedronGeometry(.07, 1);
+const grassGeo = new T.PlaneGeometry(.12,1,1,5);grassGeo.translate(0,.5,0);
+for(let i=0;i<grassGeo.attributes.position.count;i++){
+  const p=grassGeo.attributes.position,y=p.getY(i);p.setX(i,p.getX(i)*(1-y)+Math.sin(y*1.8)*.17);p.setZ(i,y*y*.14);
+}
+grassGeo.computeVertexNormals();
+for(let i=0;i<rockGeo.attributes.position.count;i++){
+  const p=rockGeo.attributes.position,x=p.getX(i),y=p.getY(i),z=p.getZ(i),n=1+.075*Math.sin(x*9+y*3)*Math.cos(z*7)+.035*Math.sin(y*15);
+  p.setXYZ(i,x*n,y*n,z*n);
+}
+rockGeo.computeVertexNormals();
+// Weld shading normals across duplicated icosphere vertices without changing geometry ownership.
+const rockNormals=new Map(),rp=rockGeo.attributes.position,rn=rockGeo.attributes.normal;
+const rockKey=i=>[rp.getX(i),rp.getY(i),rp.getZ(i)].map(n=>n.toFixed(4)).join(',');
+for(let i=0;i<rp.count;i++){const key=rockKey(i),n=rockNormals.get(key)||new T.Vector3();n.add(new T.Vector3(rn.getX(i),rn.getY(i),rn.getZ(i)));rockNormals.set(key,n);}
+for(let i=0;i<rp.count;i++){const n=rockNormals.get(rockKey(i)).clone().normalize();rn.setXYZ(i,n.x,n.y,n.z);}
 const materials = {};
 const mat = (c, roughness = .5, extra = {}) => new T.MeshStandardMaterial({ color: c, roughness, ...extra });
 
@@ -67,7 +87,7 @@ function fish(predator=false, small=false) {
     shades.push(shade.r,shade.g,shade.b);
   }
   geom.setAttribute('color',new T.Float32BufferAttribute(shades,3));
-  const body=mesh(geom,bodyMat,group); body.castShadow=!small;
+  const body=mesh(geom,bodyMat,group); body.castShadow=!small||predator;body.receiveShadow=true;
   const belly=null;
   const tail = new T.Group(); tail.position.x=predator?-1.55:-1.04; group.add(tail);
   fin(predator ? [[0,0],[-.85,1],[-.65,.05],[-.85,-.7],[-.18,-.24]] : [[0,0],[-.77,.77],[-.65,.08],[-.77,-.77],[-.08,-.14]],finMat,tail);
@@ -101,21 +121,6 @@ function animateFish(f, t, speed=1){
   u.dorsal.rotation.x=Math.sin(t*4+u.phase)*.08;
   for(const part of f.children) if(part.name==='pectoral')part.rotation.z=Math.sin(t*7+u.phase)*.15;
 }
-function caustics(material){
-  material.onBeforeCompile = shader => {
-    shader.uniforms.uOceanTime=uniforms.time; shader.uniforms.uOceanFlow=uniforms.flow;
-    shader.vertexShader='varying vec3 vOcean;\n'+shader.vertexShader;
-    shader.vertexShader=shader.vertexShader.replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nvOcean = (modelMatrix * vec4(transformed,1.0)).xyz;');
-    shader.fragmentShader='varying vec3 vOcean; uniform float uOceanTime; uniform float uOceanFlow;\n'+shader.fragmentShader;
-    shader.fragmentShader=shader.fragmentShader.replace('#include <dithering_fragment>', `
-      float xx=vOcean.x*.85+sin(vOcean.z*.34+uOceanTime*.65);
-      float zz=(vOcean.z-uOceanFlow)*.63+cos(vOcean.x*.4+uOceanTime*.52);
-      float ca=pow(max(0.,1.-abs(sin(xx*1.6+sin(zz*1.2))+sin(zz*1.7+sin(xx*.8)))*.65),14.);
-      gl_FragColor.rgb += vec3(.055,.10,.075)*ca;
-      #include <dithering_fragment>`);
-  };
-  return material;
-}
 function instances(geo, material, entries, parent){
   if(!entries.length)return;
   const inst=new T.InstancedMesh(geo,material,entries.length);
@@ -126,7 +131,7 @@ function instances(geo, material, entries, parent){
     if(e.c!==undefined)inst.setColorAt(i,color.set(e.c));
   });
   inst.instanceMatrix.needsUpdate=true;
-  inst.computeBoundingSphere(); parent.add(inst); return inst;
+  inst.computeBoundingSphere();inst.receiveShadow=true; parent.add(inst); return inst;
 }
 function branch(entries,a,b,r,c){
   const direction=new T.Vector3().subVectors(b,a);
@@ -134,7 +139,7 @@ function branch(entries,a,b,r,c){
 }
 function makeChunk(index){
   const root=new T.Group(); root.position.z=-index*30; scene.add(root);
-  const rocks=[],branches=[],tips=[],plates=[],leaves=[];
+  const rocks=[],branches=[],tips=[],plates=[],leaves=[],grass=[],pebbles=[];
   const pal=palettes[world];
   for(let i=0;i<20;i++){
     const side=i%2?1:-1, x=side*(9+Math.random()*15), z=-Math.random()*30;
@@ -168,6 +173,13 @@ function makeChunk(index){
       }
     }
   }
+  for(let i=0;i<140;i++){
+    const x=(Math.random()-.5)*38,z=-Math.random()*30;
+    for(let j=0;j<3;j++)grass.push({p:[x+(j-1)*.09,-.66,z+Math.sin(j)*.1],s:[.6+Math.random()*.6,.5+Math.random()*.7,.7],r:[0,Math.random()*Math.PI,(j-1)*.2],c:pal.kelp});
+    if(i%3===0)pebbles.push({p:[x+.8,-.5,z+.8],s:[.12+Math.random()*.23,.08+Math.random()*.11,.2+Math.random()*.25],r:[0,Math.random()*6,.1],c:pal.rock});
+  }
+  instances(grassGeo,materials.leaf,grass,root);
+  instances(coralGeo,materials.rock,pebbles,root);
   instances(rockGeo,materials.rock,rocks,root).castShadow=true;
   instances(branchGeo,materials.coral,branches,root);
   instances(coralGeo,materials.tip,tips,root);
@@ -182,12 +194,14 @@ function clearGroup(group){
 function setWorld(name){
   if(!palettes[name])return; world=name; const p=palettes[world];
   scene.background=new T.Color(p.water); scene.fog=new T.FogExp2(p.water,p.fog);
-  ambient.color.set(p.sky); ambient.groundColor.set(p.rock); ambient.intensity=world==='abyss'?1.3:1.25;
+  ambient.color.set(p.sky); ambient.groundColor.set(p.rock); ambient.intensity=world==='abyss'?.85:.78;
   sun.color.set(world==='abyss'?0x92cfee:0xffedc3); sun.intensity=p.light;
   materials.sand.color.set(p.sand); materials.coral.emissive.set(world==='abyss'?0x244358:0x000000);
   materials.tip.emissive.set(world==='abyss'?0x53a7a6:0x000000);
   materials.leaf.emissive.set(world==='abyss'?0x103548:0x000000);
   surface.material.uniforms.waterColor.value.set(p.sky);
+  if(look)look.uniforms.waterTint.value.set(p.water);
+  if(shafts){shafts.material.uniforms.tint.value.set(p.sky);shafts.material.uniforms.strength.value=world==='abyss'?.25:1;}
   for(const chunk of chunks)clearGroup(chunk);
   chunks=Array.from({length:6},(_,i)=>makeChunk(i));
   $('zone').textContent=p.name;
@@ -198,18 +212,18 @@ function init(){
   renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
   renderer.setPixelRatio(Math.min(devicePixelRatio,coarse?1.35:1.7));
   renderer.setSize(innerWidth,innerHeight);
-  renderer.toneMapping=T.ACESFilmicToneMapping; renderer.toneMappingExposure=1.13;
-  renderer.shadowMap.enabled=!coarse; renderer.shadowMap.type=T.PCFSoftShadowMap;
+  renderer.toneMapping=T.ACESFilmicToneMapping; renderer.toneMappingExposure=1.05;
+  renderer.shadowMap.enabled=true; renderer.shadowMap.type=T.PCFShadowMap;
   scene=new T.Scene(); camera=new T.PerspectiveCamera(53,innerWidth/innerHeight,.1,160);
   camera.position.set(0,7.3,15);
   ambient=new T.HemisphereLight(0xa0e4de,0x536b59,2.1); scene.add(ambient);
   sun=new T.DirectionalLight(0xffefd5,3.4); sun.position.set(-16,26,8); sun.target.position.set(0,0,-20); scene.add(sun,sun.target);
-  sun.castShadow=true; sun.shadow.mapSize.set(1024,1024);
-  Object.assign(sun.shadow.camera,{left:-30,right:30,top:30,bottom:-30,near:1,far:95});
-  sun.shadow.bias=-.0004;sun.shadow.normalBias=.04;
+  sun.castShadow=true; sun.shadow.mapSize.set(coarse?1024:2048,coarse?1024:2048);
+  Object.assign(sun.shadow.camera,{left:-25,right:25,top:27,bottom:-27,near:1,far:100});
+  sun.shadow.bias=-.0004;sun.shadow.normalBias=.035;sun.shadow.radius=3;
   const rim=new T.DirectionalLight(0x8fd6df,.8); rim.position.set(7,7,13); scene.add(rim);
-  materials.hero=mat(0xffffff,.48,{metalness:.05,vertexColors:true,emissive:0x703809,emissiveIntensity:.12});
-  materials.fin=mat(0x17868a,.42,{side:T.DoubleSide});
+  materials.hero=new T.MeshPhysicalMaterial({color:0xffffff,roughness:.32,metalness:.1,vertexColors:true,clearcoat:.65,clearcoatRoughness:.24});
+  materials.fin=mat(0x277b80,.35,{side:T.DoubleSide,transparent:true,opacity:.91});
   materials.scale=mat(0xf8d997,.5);
   materials.belly=mat(0xe9dfb5,.65);
   materials.shark=mat(0xffffff,.48,{metalness:.08,vertexColors:true});
@@ -220,31 +234,25 @@ function init(){
   materials.rock=mat(0xffffff,.92);
   materials.coral=mat(0xffffff,.7);
   materials.tip=mat(0xffffff,.6);
-  materials.leaf=mat(0xffffff,.72);
-  materials.sand=caustics(mat(0xc1b992,.96));
+  materials.leaf=mat(0xffffff,.8,{side:T.DoubleSide});
+  materials.sand=mat(0xc1b992,.96);
   materials.pearl=mat(0xffe8b5,.22,{emissive:0xc9a25f,emissiveIntensity:.65,metalness:.18});
   materials.gold=mat(0xffc45d,.2,{emissive:0xd98a22,emissiveIntensity:.95,metalness:.32});
   materials.shield=mat(0x73eed8,.3,{emissive:0x45c4bd,emissiveIntensity:1});
+  for(const name of ['hero','shark','rock','coral','leaf','sand','fin'])aquaticMaterial(materials[name],uniforms,{sand:name==='sand',skin:name==='hero'||name==='shark',sway:name==='leaf',rock:name==='rock'});
   const floorGeo=new T.PlaneGeometry(130,220,80,120); floorGeo.rotateX(-Math.PI/2);
   const fp=floorGeo.attributes.position;
-  for(let i=0;i<fp.count;i++){const x=fp.getX(i),z=fp.getZ(i);fp.setY(i,Math.sin(x*.29+z*.11)*.4+Math.sin(z*.45)*.12 + Math.max(0,Math.abs(x)-9)*.07);}
+  for(let i=0;i<fp.count;i++){const x=fp.getX(i),z=fp.getZ(i);fp.setY(i,Math.sin(x*.29+z*.11)*.12+Math.sin(z*.45)*.035 + Math.max(0,Math.abs(x)-9)*.07);}
   floorGeo.computeVertexNormals(); floor=mesh(floorGeo,materials.sand,scene,0,-.5,-70);floor.receiveShadow=true;
-  surface=mesh(new T.PlaneGeometry(180,200,1,1),new T.ShaderMaterial({
-    side:T.DoubleSide,transparent:true,depthWrite:false,
-    uniforms:{time:uniforms.time,waterColor:{value:new T.Color(0x9ce8df)}},
-    vertexShader:'varying vec2 vUv; varying float vDepth; void main(){vUv=uv; vec4 mv=modelViewMatrix*vec4(position,1.);vDepth=-mv.z; gl_Position=projectionMatrix*mv;}',
-    fragmentShader:`varying vec2 vUv; varying float vDepth; uniform float time; uniform vec3 waterColor;
-      void main(){vec2 q=vUv*90.;float n=sin(q.x+sin(q.y*.73+time*.4))*sin(q.y+cos(q.x*.7-time*.3));
-      float light=pow(1.-abs(n),14.);gl_FragColor=vec4(waterColor,(.07+light*.12)*(1.-smoothstep(25.,105.,vDepth)));}`
-  }),scene,0,14,-65); surface.rotation.x=Math.PI/2;
-  const rayMat=new T.MeshBasicMaterial({color:0xb4f7df,transparent:true,opacity:.015,side:T.DoubleSide,depthWrite:false,blending:T.AdditiveBlending});
-  for(let i=0;i<7;i++){
-    const ray=mesh(new T.CylinderGeometry(.15,2,23,12,1,true),rayMat,scene,-24+i*8,7,-8-i*13);
-    ray.rotation.z=-.35;
-  }
+  surface=waterSurface(uniforms);scene.add(surface);
+  shafts=lightShafts(scene,uniforms);
+  look=new UnderwaterView(renderer,scene,camera,uniforms,reduced,coarse);
+  trails=new WaterTrails(scene);discoveries=new OceanDiscoveries(scene);
+  feedback=new ScoreFeedback($('score-feedback'),reduced);
+  for(let i=0;i<3;i++){const el=document.createElement('div');el.className='depth-cue';el.hidden=true;$('depth-cues').append(el);cues.push(el);}
   heroPivot=new T.Group(); scene.add(heroPivot);
   hero=fish(); heroPivot.add(hero);
-  shieldMesh=mesh(new T.SphereGeometry(1.7,22,16),new T.MeshBasicMaterial({color:0x94f9e1,transparent:true,opacity:.13,wireframe:true,depthWrite:false}),heroPivot);
+  shieldMesh=mesh(new T.SphereGeometry(1.7,22,16),new T.MeshBasicMaterial({color:0x94f9e1,transparent:true,opacity:.1,wireframe:false,depthWrite:false}),heroPivot);
   shieldMesh.visible=false;
   for(let i=0;i<22;i++){
     const f=fish(false,true); f.scale.setScalar(.17+Math.random()*.17);
@@ -263,11 +271,16 @@ function createParticles(){
   for(let i=0;i<dustData.length;i+=3){dustData[i]=(Math.random()-.5)*55;dustData[i+1]=Math.random()*15;dustData[i+2]=15-Math.random()*110;}
   const geo=new T.BufferGeometry();geo.setAttribute('position',new T.BufferAttribute(dustData,3));
   dust=new T.Points(geo,new T.PointsMaterial({color:0xb4eadf,size:.048,transparent:true,opacity:.5,depthWrite:false}));
+  dust.material.onBeforeCompile=shader=>{
+    shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+      float bd=length(gl_PointCoord-vec2(.5));if(bd>.5)discard;diffuseColor.a*=pow(1.-bd*2.,1.3);`);
+  };
   scene.add(dust);
 }
 function item(kind,x,y,z){
   let model;
-  if(kind==='shark'||kind==='guardian'){
+  if(SPECIAL_KINDS.includes(kind))model=discoveries.create(kind);
+  else if(kind==='shark'||kind==='guardian'){
     model=fish(true,true); model.rotation.y=-Math.PI/2; model.scale.setScalar(kind==='guardian'?1.5:.9);
   } else {
     model=new T.Group();
@@ -276,7 +289,7 @@ function item(kind,x,y,z){
     halo.rotation.y=.3;
   }
   model.position.set(x,y,z);scene.add(model);
-  items.push({kind,mesh:model,baseY:y,phase:Math.random()*6.28,radius:kind==='guardian'?2.1:kind==='shark'?1.15:.85,lastZ:z,wakeClock:0});
+  items.push({kind,mesh:model,baseY:y,phase:Math.random()*6.28,radius:kind==='guardian'?2.1:kind==='gate'?1.65:kind==='jelly'?1.18:kind==='shark'?1.15:kind==='chest'?1.1:.85,lastZ:z,wakeClock:0,passed:false});
   return model;
 }
 function spawnWave(){
@@ -286,8 +299,39 @@ function spawnWave(){
   if(n>12&&n%2===0)item('shark',x*.4,7.7,-72);
   if(n%6===4)item('shield',x*.3,4.5,-76);
 }
+function encounter(event){
+  const x=Math.sin(event.at*.13+routeSeed)*3.2,y=4.2+Math.cos(event.at*.17)*1.2;
+  toast(event.title);sfx.play('discover');
+  if(event.kind==='magnet')item('magnet',x,y,-40);
+  if(event.kind==='treasure')item('chest',x,y,-48);
+  if(event.kind==='frenzy')item('frenzy',x,y,-45);
+  if(event.kind==='whale')discoveries.sighting();
+  if(event.kind==='current')for(let i=0;i<3;i++){
+    const gx=x+Math.sin(i*.7)*1.2,gy=y+i*.22,z=-42-i*11;
+    item('gate',gx,gy,z);item('gold',gx,gy,z-4);
+  }
+  if(event.kind==='jellies')for(let i=0;i<5;i++)item('jelly',-5+i*2.5,3.8+(i%2)*2.6,-48-(i%2)*8);
+}
+function celebrateRush(previous){
+  if(previous<=0&&run.frenzy>0){toast('حمّى اللآلئ! مكافآت مضاعفة لمدة 8 ثوانٍ');sfx.play('frenzy');}
+}
+function updateDepthCues(){
+  const candidates=mode==='playing'?items.filter(o=>(isHazard(o.kind)||SPECIAL_KINDS.includes(o.kind))&&o.mesh.position.z<0&&o.mesh.position.z>-45).sort((a,b)=>b.mesh.position.z-a.mesh.position.z).slice(0,3):[];
+  cues.forEach((el,i)=>{
+    const obj=candidates[i];if(!obj){el.hidden=true;return;}
+    cueProjection.copy(obj.mesh.position).add(new T.Vector3(0,obj.kind==='jelly'?1.5:1.2,0)).project(camera);
+    if(cueProjection.z>1||Math.abs(cueProjection.x)>.92||Math.abs(cueProjection.y)>.76){el.hidden=true;return;}
+    el.hidden=false;el.className='depth-cue '+(isHazard(obj.kind)?'danger':'reward');
+    const name={shark:'مفترس',guardian:'قرش الوادي',jelly:'قنديل',chest:'كنز',magnet:'مغناطيس',gate:'تيار',frenzy:'حمّى اللآلئ'}[obj.kind];
+    el.textContent=name+' · '+Math.ceil(-obj.mesh.position.z)+' م';
+    el.style.transform='translate('+((cueProjection.x*.5+.5)*innerWidth)+'px,'+((-cueProjection.y*.5+.5)*innerHeight)+'px) translate(-50%,-100%)';
+    el.classList.toggle('near',obj.mesh.position.z>-10);
+  });
+}
+function renderGame(){look.render();}
 function disposeItem(obj){
   scene.remove(obj.mesh);
+  if(obj.mesh.userData.special)return;
   obj.mesh.traverse(m=>{
     if(!m.isMesh)return;
     // Shared primitives/materials stay alive; each fish owns only its custom meshes.
@@ -297,7 +341,7 @@ function disposeItem(obj){
 }
 function emitWake(pos,hostile=false,size=1){
   if(wakes.length>52 || reduced)return;
-  const m=new T.Mesh(ringGeo,new T.MeshBasicMaterial({color:hostile?0xe18879:0xbcece2,transparent:true,opacity:hostile?.3:.22,depthWrite:false}));
+  const m=new T.Mesh(ringGeo,new T.MeshBasicMaterial({color:hostile?0xe18879:0xbcece2,transparent:true,opacity:hostile?.18:.12,depthWrite:false}));
   m.position.copy(pos);m.position.z+=hostile?-1.4:1.3;m.scale.set(size*.45,size*.32,1);
   if(hostile)m.rotation.z=Math.random()*3;
   scene.add(m);wakes.push({mesh:m,life:1,max:1,hostile,size});
@@ -323,7 +367,7 @@ function syncSoundUI(){
 }
 function start(){
   if(mode==='paused'){setMode('playing');canvas.focus();return;}
-  sfx.stopVoices();
+  sfx.stopVoices();feedback.clear();trails.reset();discoveries.reset();encounterIndex=0;routeSeed=Math.random()*6.28;damageFlash=0;
   items.forEach(disposeItem);items=[];
   for(const effect of [...wakes,...splashes]){scene.remove(effect.mesh);effect.mesh.material.dispose();}
   wakes=[];splashes=[];run=newRun();position.set(0,4.4,0);velocity.set(0,0,0);flow=0;nextWave=18;guardianSpawned=false;waveClock=0;
@@ -349,7 +393,7 @@ function setMode(value){
     $('heading').innerHTML='عالمٌ آخر<br><em>تحت السطح.</em>';
     $('description').innerHTML='بين الضوء والمرجان، تبدأ رحلتك.<br>اسبح مع التيار، اجمع اللآلئ، واكتشف ما تخبّئه الأعماق.';
     $('start').querySelector('span').textContent='ابدأ الغوص';
-    items.forEach(disposeItem);items=[];
+    items.forEach(disposeItem);items=[];feedback.clear();trails.reset();discoveries.reset();
   } else if(value==='ended'){
     best=Math.max(best,run.score);try{localStorage.setItem('amaq-best',String(best));}catch{}
     $('best').textContent=best;
@@ -392,37 +436,65 @@ function update(dt){
     position.x=clamp(position.x+velocity.x*dt,-6.3,6.3);
     position.y=clamp(position.y+velocity.y*dt,1.6,10);
     if(run.distance>=nextWave){spawnWave();nextWave+=18;}
+    while(encounterIndex<ENCOUNTERS.length&&run.distance>=ENCOUNTERS[encounterIndex].at)encounter(ENCOUNTERS[encounterIndex++]);
     if(run.distance>405&&!guardianSpawned){item('guardian',0,4.6,-85);guardianSpawned=true;sfx.play('guardian');toast('قرش الوادي أمامك · تفادَه أو اندفع عبره');}
     if(run.distance>670&&run.distance-travel<=670)toast('ضوء المخرج قريب · واصل السباحة');
     waveClock-=dt;if(waveClock<=0){emitWake(position,false,run.boost>0?1.7:.8);waveClock=run.boost>0?.07:.21;}
     for(let i=items.length-1;i>=0;i--){
       const obj=items[i],p=obj.mesh.position;obj.lastZ=p.z;
-      const danger=obj.kind==='shark'||obj.kind==='guardian';
-      p.z+=travel+(danger?dt*(obj.kind==='guardian'?6:4):0);
-      p.y=obj.baseY+Math.sin(time*1.6+obj.phase)*.18;
-      if(danger){
+      const danger=isHazard(obj.kind);
+      p.z+=travel+(danger&&obj.kind!=='jelly'?dt*(obj.kind==='guardian'?6:4):0);
+      const magnetic=run.magnet>0&&(obj.kind==='pearl'||obj.kind==='gold')&&p.z<2&&p.distanceTo(position)<9;
+      if(magnetic){obj.attracted=true;p.lerp(position,1-Math.exp(-dt*7));}
+      else {if(obj.attracted){obj.baseY=p.y;obj.attracted=false;}p.y=obj.baseY+Math.sin(time*1.6+obj.phase)*.18;}
+      if(obj.mesh.userData.special)discoveries.animate(obj.mesh,obj.kind,time);
+      if(danger&&obj.kind!=='jelly'){
         animateFish(obj.mesh,time,1.25);obj.wakeClock-=dt;
         if(obj.wakeClock<=0){emitWake(p,true,obj.kind==='guardian'?2:1.2);obj.wakeClock=.35;}
-      } else {obj.mesh.rotation.y+=dt*.7;obj.mesh.rotation.z=Math.sin(time+obj.phase)*.16;}
-      if(overlaps(position,p,obj.radius,obj.lastZ)){
+      } else if(!obj.mesh.userData.special){obj.mesh.rotation.y+=dt*.7;obj.mesh.rotation.z=Math.sin(time+obj.phase)*.16;}
+      collisionPoint.copy(p);if(obj.kind==='jelly')collisionPoint.y-=.45;
+      if(overlaps(position,collisionPoint,obj.radius,obj.lastZ)){
         if(danger){
-          const result=hit(run);
+          const previousScore=run.score,result=hit(run);
           if(result!=='immune'){
+            feedback.show(run.score-previousScore,position,result==='shield'?'حماية':result==='defeated'?'اندفاع ناجح':run.score===previousScore?'أُصبت':'');
+            if(result==='hurt')damageFlash=1;
             burst(p,result==='hurt'?0xe2947d:0xb5edda);sfx.play(result==='shield'?'block':result,{pan:clamp((p.x-position.x)/8,-1,1)});
             if(result==='shield')toast('الدرع حماك');
             if(result==='defeated')toast(obj.kind==='guardian'?'تجاوزت قرش الوادي! +25':'اندفاع ناجح +25');
             disposeItem(obj);items.splice(i,1);
           }
         } else {
-          collect(run,obj.kind);burst(p,obj.kind==='shield'?0x88edd3:0xf5d48c);sfx.play(obj.kind,{combo:run.combo,pan:clamp((p.x-position.x)/8,-1,1)});
-          if(obj.kind==='shield')toast('درع المدّ · حماية لمدة 9 ثوانٍ');
+          const previousRush=run.frenzy;
+          let delta,label='';
+          if(obj.kind==='chest'){
+            const treasure=openTreasure(run);delta=treasure.delta;
+            label={magnet:'كنز + مغناطيس',heal:'كنز + قلب',shield:'كنز + درع',jackpot:'الكنز الكبير!'}[treasure.reward];
+            toast(label);sfx.play('treasure');
+          }else{
+            delta=collect(run,obj.kind);
+            label={magnet:'مغناطيس',gate:'تيار سريع',shield:'درع',gold:'لؤلؤة ذهبية',frenzy:'حمّى اللآلئ'}[obj.kind]||'';
+            sfx.play(obj.kind,{combo:run.combo,pan:clamp((p.x-position.x)/8,-1,1)});
+            if(obj.kind==='shield')toast('درع المدّ · حماية لمدة 9 ثوانٍ');
+            if(obj.kind==='magnet')toast('مغناطيس نشط · اللآلئ القريبة تنجذب إليك');
+          }
+          feedback.show(delta,position,label);burst(p,obj.kind==='shield'||obj.kind==='magnet'?0x88edd3:0xf5d48c);
+          celebrateRush(previousRush);
           disposeItem(obj);items.splice(i,1);
         }
       } else if(p.z>14){disposeItem(obj);items.splice(i,1);}
+      else if(danger&&!obj.passed&&obj.lastZ<1.5&&p.z>=1.5){
+        obj.passed=true;
+        const lateral=Math.hypot(position.x-collisionPoint.x,position.y-collisionPoint.y);
+        if(lateral>obj.radius&&lateral<obj.radius+1.05){
+          const previousRush=run.frenzy,delta=nearMiss(run);
+          if(delta){feedback.show(delta,position,'مراوغة قريبة');sfx.play('nearMiss');celebrateRush(previousRush);}
+        }
+      }
     }
     let threat=null;
     for(const obj of items){
-      if(obj.kind!=='shark'&&obj.kind!=='guardian')continue;
+      if(!isHazard(obj.kind))continue;
       const p=obj.mesh.position,dx=p.x-position.x,dy=p.y-position.y;
       if(p.z>2||Math.hypot(dx,dy)>7)continue;
       const distance=Math.hypot(dx,dy,p.z);
@@ -431,6 +503,12 @@ function update(dt){
     sfx.update({world,speed:Math.hypot(velocity.x,velocity.y)/9,boosting:run.boost>0,threat});
     if(run.ended)setMode('ended');
   }
+  if(playing)damageFlash=Math.max(0,damageFlash-dt*2.4);
+  look.uniforms.hurt.value=damageFlash;
+  look.uniforms.speed.value=run.boost>0||run.current>0?1:0;
+  look.uniforms.rush.value=T.MathUtils.damp(look.uniforms.rush.value,playing&&run.frenzy>0?1:0,4,dt);
+  shafts.update(time);discoveries.update(dt,time,playing);
+  trails.update(dt,position,travel,time,playing,reduced);
   const active=mode!=='menu';
   const portrait=innerWidth<700;
   const displayPos=active?position:new T.Vector3(portrait?0:-4.5,portrait?7.9:5,0);
@@ -441,13 +519,14 @@ function update(dt){
   hero.rotation.z=T.MathUtils.damp(hero.rotation.z,active?velocity.y*.035:Math.sin(time*.8)*.055,5,dt);
   hero.rotation.x=T.MathUtils.damp(hero.rotation.x,active?velocity.x*.045:0,5,dt);
   if(!active)heroPivot.position.y+=Math.sin(time*1.2)*.004;
+  else if(playing&&!reduced)heroPivot.position.y+=Math.sin(time*2.4)*.015;
   animateFish(hero,time,run.boost>0?1.7:1);
   shieldMesh.visible=playing&&run.shield>0;
   hero.visible=!(playing&&run.invulnerable>0&&Math.floor(time*12)%2===0);
   for(let i=wakes.length-1;i>=0;i--){
     const w=wakes[i];if(playing||mode==='menu'){w.life-=dt;
     w.mesh.position.z+=travel*.58;w.mesh.scale.x+=dt*.9;w.mesh.scale.y+=dt*.55;}
-    w.mesh.material.opacity=w.life*(w.hostile?.27:.2);
+    w.mesh.material.opacity=w.life*(w.hostile?.16:.1);
     if(w.life<=0){scene.remove(w.mesh);w.mesh.material.dispose();wakes.splice(i,1);}
   }
   for(let i=splashes.length-1;i>=0;i--){
@@ -460,15 +539,20 @@ function update(dt){
   viewTarget.set(active?position.x*.22:0,active?position.y*.4+2.2:4.4,-13);
   camera.lookAt(viewTarget);
   camera.fov=T.MathUtils.damp(camera.fov,run.boost>0&&playing&&!reduced?60:53,4,dt);camera.updateProjectionMatrix();
+  feedback.update(dt,camera,playing);updateDepthCues();
   if(toastTime>0&&mode==='playing'){toastTime-=dt;if(toastTime<=0)$('toast').classList.remove('visible');}
 }
 let hudClock=0,slowFrames=0;
 function frame(ms){
   const dt=Math.min((ms-last)/1000||.016,.05);last=ms;
-  update(dt);renderer.render(scene,camera);
+  update(dt);renderGame();
   hudClock+=dt;
   if(hudClock>.1){
-    hudClock=0;$('score').textContent=run.score;$('combo').textContent=run.combo>1?'×'+run.combo+' سلسلة':'';
+    hudClock=0;$('score').textContent=run.score;
+    $('rush-meter').value=run.frenzy>0?run.frenzy/8*RUSH_TARGET:run.charge;
+    $('rush-label').textContent=run.frenzy>0?'حمّى اللآلئ ×2 · '+Math.ceil(run.frenzy)+' ث':'حمّى اللآلئ · '+run.charge+'/'+RUSH_TARGET;
+    $('rush-box').classList.toggle('active',run.frenzy>0);
+    $('powers').textContent=[run.magnet>0?'مغناطيس '+Math.ceil(run.magnet)+' ث':'',run.current>0?'تيار '+Math.ceil(run.current)+' ث':''].filter(Boolean).join(' · ');$('combo').textContent=run.combo>1?'×'+run.combo+' سلسلة':'';
     $('distance').textContent=Math.floor(run.distance);$('progress').value=run.distance;
     $('lives').textContent=Array.from({length:3},(_,i)=>i<run.lives?'●':'○').join(' ');
     $('lives').setAttribute('aria-label',run.lives+' محاولات');
@@ -522,7 +606,7 @@ function bind(){
   canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();setMode('paused');$('error').hidden=false;renderer.setAnimationLoop(null);});
   canvas.addEventListener('webglcontextrestored',()=>location.reload());
   if(new URLSearchParams(location.search).has('test')){
-    window.__ocean={simulate:seconds=>{for(let t=0;t<seconds;t+=.05)update(.05);renderer.render(scene,camera);},snapshot:()=>({mode,world,audio:sfx.snapshot(),run:{...run},position:position.toArray(),camera:camera.position.toArray(),items:items.map(o=>({kind:o.kind,p:o.mesh.position.toArray()})),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries}),step:dt=>{update(dt);renderer.render(scene,camera);},place:(x,y)=>{position.set(clamp(x,-6.3,6.3),clamp(y,1.6,10),0);velocity.set(0,0,0);},spawn:(kind,x,y,z)=>item(kind,x,y,z)};
+    window.__ocean={simulate:seconds=>{for(let t=0;t<seconds;t+=.05)update(.05);renderGame();},snapshot:()=>({mode,world,audio:sfx.snapshot(),feedback:feedback.entries.map(e=>e.element.textContent),encounterIndex,whale:discoveries.whale.visible,renderSize:[look.target.width,look.target.height],run:{...run},position:position.toArray(),camera:camera.position.toArray(),items:items.map(o=>({kind:o.kind,p:o.mesh.position.toArray()})),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries}),step:dt=>{update(dt);renderGame();},place:(x,y)=>{position.set(clamp(x,-6.3,6.3),clamp(y,1.6,10),0);velocity.set(0,0,0);},spawn:(kind,x,y,z)=>item(kind,x,y,z),encounter:kind=>encounter(ENCOUNTERS.find(e=>e.kind===kind)||{kind,title:'اختبار',at:0})};
   }
 }
 try{init();}catch(error){console.error('Ocean initialization failed',error);$('error').hidden=false;$('start').disabled=true;document.documentElement.dataset.engine='error';}

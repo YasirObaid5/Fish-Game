@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test tests/gameplay.test.mjs",
+    "test": "node --test tests/gameplay.test.mjs tests/discoveries.test.mjs",
+    "test:tides": "node tests/tides.browser.cjs",
     "test:audio": "node tests/audio.browser.cjs"
   },
   "devDependencies": {

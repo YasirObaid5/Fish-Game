@@ -15,6 +15,7 @@ export class OceanAudio {
     this.lastEvent = null;
     this.lastPan = 0;
     this.eventCount = 0;
+    this.events = {};
     this.nextWarning = 0;
     this.nextBubble = 0;
     this.nextUpdate = 0;
@@ -194,6 +195,12 @@ export class OceanAudio {
       const note = NOTES[clamp(Math.floor(combo) - 1, 0, 4)];
       tone(note, .25, .15); tone(note * 2, .12, .027, .025);
     } else if (event === 'gold') chime([659.25, 880, 1318.5]);
+    else if (event === 'treasure') chime([392,523.25,659.25,1046.5],.11,.14);
+    else if (event === 'magnet') {wash(300,1700,.45,.12);chime([440,659.25],.1,.1);}
+    else if (event === 'gate') {wash(250,2100,.65,.3);chime([392,783.99],.1,.1);}
+    else if (event === 'frenzy') chime([523.25,659.25,783.99,1046.5,1318.5],.09,.13);
+    else if (event === 'nearMiss') {wash(900,300,.2,.13);chime([659.25,987.77],.05,.08);}
+    else if (event === 'discover') chime([261.63,392],.18,.065);
     else if (event === 'shield') { wash(500, 2200, .55, .14); chime([392, 587.33, 783.99], .11); }
     else if (event === 'dash') { wash(260, 2300, .65, .5); tone(160, .35, .1, 0, 65); }
     else if (event === 'hurt') { wash(900, 100, .35, .3); tone(115, .32, .2, 0, 42); }
@@ -208,6 +215,9 @@ export class OceanAudio {
     else if (event === 'bubble') tone(300 + Math.random() * 350, .12, .022, 0, 1000);
     else return;
     this.lastEvent = event; this.lastPan = pan; this.eventCount++;
+    this.events[event]=(this.events[event]||0)+1;
+    if(['hurt','block','defeated','dash','treasure','frenzy','win','lose','start'].includes(event))this.nextWarning=Math.max(this.nextWarning,now+.65);
+    if(event!=='bubble'&&event!=='warning')this.nextBubble=Math.max(this.nextBubble,now+1.1);
   }
   update({ world, speed = 0, boosting = false, threat = null }) {
     if (!this.master || !this.enabled || this.mode !== 'playing' || this.context.state === 'suspended') return;
@@ -232,7 +242,7 @@ export class OceanAudio {
   snapshot() {
     return { supported: this.supported, initialized: Boolean(this.master), enabled: this.enabled, volume: this.volume,
       muted: this.muted, state: this.context?.state || 'idle', mode: this.mode, voices: this.voices.size,
-      lastEvent: this.lastEvent, lastPan: this.lastPan, eventCount: this.eventCount,
+      lastEvent: this.lastEvent, lastPan: this.lastPan, eventCount: this.eventCount, events: {...this.events},
       swimGain: this.swim?.gain.gain.value || 0, masterGain: this.master?.gain.value || 0 };
   }
 }

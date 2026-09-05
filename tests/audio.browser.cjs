@@ -47,10 +47,15 @@ let browser;
     return { peak: Math.max(...data.map(Math.abs)), rms: Math.sqrt(data.reduce((n, v) => n + v * v, 0) / data.length) };
   });
   const volume = value => page.locator('#volume').evaluate((el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); }, String(value));
-  const collide = kind => page.evaluate(kind => {
-    window.__ocean.place(0, 4.4); window.__ocean.spawn(kind, 0, 4.4, -.1); window.__ocean.step(.05);
-    return window.__ocean.snapshot();
-  }, kind);
+  const collide = async (kind, event) => {
+    const before = (await state()).audio.events[event] || 0;
+    const result = await page.evaluate(kind => {
+      window.__ocean.place(0, 4.4); window.__ocean.spawn(kind, 0, 4.4, -.1); window.__ocean.step(.05);
+      return window.__ocean.snapshot();
+    }, kind);
+    assert.equal(result.audio.events[event], before + 1, event + ' emitted once for the collision');
+    return result;
+  };
   await boot();
   assert.equal((await state()).audio.initialized, false, 'No AudioContext or autoplay before a gesture');
   await page.locator('#start').click();
@@ -70,14 +75,14 @@ let browser;
   assert.equal((await state()).audio.voices, 0);
   await page.locator('#start').click();
   await page.evaluate(() => { window.__ocean.place(6.3, 9.9); window.__ocean.simulate(4); });
-  assert.equal((await collide('gold')).audio.lastEvent, 'gold');
-  assert.equal((await collide('shield')).audio.lastEvent, 'shield');
-  assert.equal((await collide('shark')).audio.lastEvent, 'block');
+  await collide('gold', 'gold');
+  await collide('shield', 'shield');
+  await collide('shark', 'block');
   await page.evaluate(() => window.__ocean.simulate(2.2));
-  assert.equal((await collide('shark')).audio.lastEvent, 'hurt');
+  await collide('shark', 'hurt');
   await page.evaluate(() => window.__ocean.simulate(2.2));
   await page.keyboard.press('Space');
-  assert.equal((await collide('shark')).audio.lastEvent, 'defeated');
+  await collide('shark', 'defeated');
   await page.locator('#sound').click();
   await page.waitForTimeout(250);
   assert.equal((await state()).audio.enabled, false);
@@ -133,7 +138,7 @@ let browser;
     const rendered = await page.evaluate(async () => {
       const { OceanAudio } = await import('/ocean-audio.js');
       const results = [];
-      for (const event of ['pearl', 'gold', 'shield', 'dash', 'hurt', 'block', 'defeated', 'warning', 'guardian', 'start', 'win', 'lose']) {
+      for (const event of ['pearl', 'gold', 'shield', 'dash', 'hurt', 'block', 'defeated', 'warning', 'guardian', 'start', 'win', 'lose', 'treasure', 'magnet', 'gate', 'frenzy', 'nearMiss', 'discover']) {
         const context = new OfflineAudioContext(2, 48000, 32000);
         const audio = new OceanAudio({ context, storage: null });
         audio.setMode('playing'); audio.play(event, { pan: .8, combo: 4 });
