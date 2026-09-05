@@ -1,0 +1,10 @@
+{
+  "name": "fish-game",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/gameplay.test.mjs"
+  },
+  "devDependencies": { "esbuild": "0.25.9" }
+}

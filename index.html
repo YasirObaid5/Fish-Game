@@ -1,67 +1,58 @@
 <!doctype html>
-<html lang="ar" dir="rtl" data-world="reef">
+<html lang="ar" dir="rtl" data-mode="menu">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#061d3b">
-  <title>مغامرة الأعماق</title>
-  <link rel="stylesheet" href="style.css?v=20260801-worlds">
+  <meta name="theme-color" content="#062c35">
+  <meta name="description" content="أعماق — رحلة سباحة ثلاثية الأبعاد بين الشعاب المرجانية. اجمع اللآلئ، تفادَ المفترسات واكتشف البحر.">
+  <title>أعماق — رحلة تحت السطح</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 40 40%27%3E%3Crect width=%2740%27 height=%2740%27 rx=%279%27 fill=%27%23063841%27/%3E%3Cpath d=%27M7 20Q20 3 33 20Q20 37 7 20L4 10V30Z%27 fill=%27%23e8c588%27/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css?v=20260905-3d">
 </head>
 <body>
-  <main class="game-shell">
-    <canvas id="world-fx" aria-hidden="true"></canvas>
-    <canvas id="game" aria-label="لعبة مغامرة الأعماق"></canvas>
-
-    <header class="hud" aria-live="polite">
-      <div class="hud-group">
-        <div class="stat score-card"><span>اللآلئ</span><strong id="score">0</strong></div>
-        <div class="stat combo-card"><span>السلسلة</span><strong id="combo">×1</strong></div>
-      </div>
-      <div class="brand"><i></i><span>مغامرة الأعماق</span><i></i></div>
-      <div class="hud-group actions">
-        <div class="stat lives-card" aria-label="المحاولات"><strong id="lives">♥ ♥ ♥</strong></div>
-        <button id="sound" class="icon-button" type="button" aria-label="كتم الصوت">♫</button>
-        <button id="fullscreen" class="icon-button" type="button" aria-label="ملء الشاشة">⛶</button>
+  <main id="app">
+    <canvas id="ocean" tabindex="-1" aria-label="عالم أعماق ثلاثي الأبعاد. الأسهم للسباحة وSpace للاندفاع وEscape للإيقاف."></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+    <header class="topbar">
+      <a class="wordmark" href="./" aria-label="أعماق — الرئيسية"><svg viewBox="0 0 42 30" aria-hidden="true"><path d="M3 15C13 0 28 0 37 15 28 30 13 30 3 15Z M3 15 0 4 M3 15 0 26"/><circle cx="29" cy="12" r="2"/></svg><span>أعماق<small>A'MAQ</small></span></a>
+      <span class="edition">رحلة تحت السطح <i></i> 01</span>
+      <div class="toolbar">
+        <button id="pause" class="icon" aria-label="إيقاف مؤقت" title="إيقاف مؤقت · Esc">Ⅱ</button>
+        <button id="sound" class="icon" aria-label="تشغيل الصوت" aria-pressed="false" title="الصوت"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 5-5 4H3v6h3l5 4V5Zm4 3c3 2 3 6 0 8m3-11c5 4 5 10 0 14"/></svg></button>
+        <button id="fullscreen" class="icon" aria-label="ملء الشاشة" title="ملء الشاشة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button>
       </div>
     </header>
-
-    <section id="overlay" class="overlay visible">
-      <div class="panel">
-        <p class="eyebrow">رحلة إلى مملكة الشعاب</p>
-        <h1 id="title">مغامرة الأعماق</h1>
-        <p id="message">اجمع اللآلئ، وطوّر سلالة سمكتك، وأنجز مسار الرحلة قبل ظهور حارس العالم.</p>
-        <div class="legend">
-          <span><b class="pearl-dot"></b> لؤلؤة</span>
-          <span><b class="gold-dot"></b> كنز نادر</span>
-          <span><b class="relic-dot"></b> أثر غامض</span>
-          <span><b class="danger-dot"></b> خطر</span>
+    <section id="menu" class="menu" aria-labelledby="heading">
+      <div class="menu-copy">
+        <p class="eyebrow"><span></span> المحيط يناديك</p>
+        <h1 id="heading">عالمٌ آخر<br><em>تحت السطح.</em></h1>
+        <p id="description" class="description">بين الضوء والمرجان، تبدأ رحلتك.<br>اسبح مع التيار، اجمع اللآلئ، واكتشف ما تخبّئه الأعماق.</p>
+        <div id="results" class="results" hidden></div>
+        <div id="worlds" class="worlds" role="group" aria-label="اختر وجهتك">
+          <button data-world="reef" aria-pressed="true"><span class="world-dot reef"></span><b>حدائق المرجان</b><small>مياه دافئة</small></button>
+          <button data-world="kelp" aria-pressed="false"><span class="world-dot kelp"></span><b>غابة المدّ</b><small>بين الأعشاب</small></button>
+          <button data-world="abyss" aria-pressed="false"><span class="world-dot abyss"></span><b>بحر الليل</b><small>حياة مضيئة</small></button>
         </div>
-        <div class="world-picker" aria-label="اختر عالم اللعبة">
-          <button class="world-option active" type="button" data-world="reef" aria-pressed="true">
-            <b>حدائق المرجان</b><small>سينمائي ومشرق</small>
-          </button>
-          <button class="world-option" type="button" data-world="atlas" aria-pressed="false">
-            <b>الأطلس الغارق</b><small>حبر وورق</small>
-          </button>
-          <button class="world-option" type="button" data-world="void" aria-pressed="false">
-            <b>الهاوية البلورية</b><small>عالم إجرائي ثلاثي الأبعاد</small>
-          </button>
-        </div>
-        <button id="start" class="start-button" type="button">ابدأ في هذا العالم</button>
-        <p class="controls">الأسهم للحركة · Space للاندفاع · ويمكنك استخدام المؤشر أو اللمس</p>
+        <button id="start" class="primary" disabled><span>نُجهّز البحر…</span><b aria-hidden="true">←</b></button>
+        <button id="home" class="text-button" hidden>العودة إلى الوجهات</button>
+        <p class="best">أفضل رحلة <b id="best">0</b> <span>نقطة</span></p>
       </div>
+      <div class="specimen" aria-hidden="true"><span>01 / سمكة الشمس</span><small>رفيقتك في الأعماق</small></div>
+      <footer class="menu-footer"><span>ثلاثة بحار. رحلة واحدة تخصّك.</span><span dir="ltr">YASIR OBAID · 2026</span></footer>
     </section>
-
-    <div id="event" class="event-banner" role="status" aria-live="polite"></div>
-    <div class="mission-card">
-      <span>مسار الرحلة · <b id="rank">الزريعة</b></span>
-      <strong id="mission">اكتشف المهمة</strong>
-      <small id="mission-progress">0 / 0</small>
-    </div>
-    <div id="power" class="power-status">⚡ الاندفاع جاهز</div>
-    <div class="depth-meter" aria-hidden="true"><span id="depth"></span></div>
+    <section id="hud" class="hud" aria-label="بيانات الرحلة" hidden>
+      <div class="score"><small>اللآلئ</small><b id="score">0</b><span id="combo"></span></div>
+      <div class="journey"><div><span id="zone">حدائق المرجان</span><b><span id="distance">0</span> / 800 م</b></div><progress id="progress" max="800" value="0" aria-label="مسافة الرحلة"></progress></div>
+      <div class="health"><span id="lives" aria-label="3 محاولات">● ● ●</span><small id="shield"></small></div>
+      <div class="boost-status"><span id="boost-label">الاندفاع جاهز</span><progress id="energy" max="3.6" value="3.6" aria-label="طاقة الاندفاع"></progress><kbd>SPACE</kbd></div>
+      <div class="objective">اعبر 800 متر <i>·</i> اللآلئ الذهبية تضاعف مكافأتك</div>
+    </section>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div class="instructions"><span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> السباحة</span><span><kbd>SPACE</kbd> اندفاع</span><span><kbd>ESC</kbd> توقف</span></div>
+    <div id="touch" class="touch-controls"><div id="stick" aria-label="اسحب للتحرك"><i></i><span>اسحب للسباحة</span></div><button id="touch-boost" aria-label="اندفاع">اندفاع<br><small>↑</small></button></div>
+    <div id="error" class="error" role="alert" hidden><h2>تعذّر تشغيل البحر</h2><p>فعّل تسريع الرسومات في متصفحك ثم أعد المحاولة.</p><button onclick="location.reload()" class="primary">إعادة المحاولة</button></div>
+    <noscript>تحتاج اللعبة إلى تفعيل JavaScript.</noscript>
   </main>
-  <script src="worlds.bundle.js?v=20260801-worlds3" defer></script>
-  <script src="main.js?v=20260801-wakes" defer></script>
+  <script src="ocean.bundle.js?v=20260905-3d" defer></script>
 </body>
 </html>

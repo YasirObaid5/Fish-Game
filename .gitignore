@@ -1,2 +1,4 @@
 tmp/
 main.legacy.js
+node_modules/
+dist/
