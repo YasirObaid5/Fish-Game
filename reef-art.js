@@ -205,6 +205,7 @@ export async function loadReefArt({ floor, coarse = false, ceiling = 17, time = 
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Original reef model could not load (${response.status}).`);
   const bytes = await response.arrayBuffer(), templates = parseReefGLB(bytes);
+  const distanceKits=await Promise.all(['mid','far'].map(async level=>{const res=await fetch(url.replace(/\.glb$/, '-'+level+'.glb'));if(!res.ok)throw new Error('Missing reef distance model: '+level);return parseReefGLB(await res.arrayBuffer());}));
   const group = new THREE.Group();
   group.name = 'authored-reef';
   const dummy = new THREE.Object3D();
@@ -212,7 +213,9 @@ export async function loadReefArt({ floor, coarse = false, ceiling = 17, time = 
   const assets = [];
   for (const [name, source] of templates) {
     const all = COMPOSITION[name], locations = coarse ? all.slice(0, name === 'sponge_cluster' ? 2 : 3) : all;
-    livingPigment(source.geometry, name);
+    const distanceLevels=[source.geometry,...distanceKits.map(kit=>kit.get(name).geometry)];
+    distanceLevels.forEach(geometry=>livingPigment(geometry,name));
+    source.geometry.userData.distanceLevels=distanceLevels;
     const mesh = new THREE.InstancedMesh(source.geometry, reefTissueMaterial(source.material, name, time), locations.length);
     mesh.name = `authored-${name}`;
     mesh.castShadow = true;

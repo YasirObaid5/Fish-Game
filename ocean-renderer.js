@@ -14,9 +14,33 @@ float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 // painted circles under rocks. This pass runs at half resolution on both tiers.
 const occlusion = `${reconstruct}
 varying vec2 vUv;
+uniform sampler2D sunlightDepth;
+uniform mat4 sunlightMatrix;
+uniform float shaftStrength;
+#include <packing>
+float lightShafts(){
+  if(shaftStrength<.001)return 0.;
+  vec3 point=viewPoint(vUv),ray=normalize((cameraWorld*vec4(normalize(point),0.)).xyz);
+  vec3 origin=cameraWorld[3].xyz;
+  float segment=min(length(point),36.),sum=0.;
+  float jitter=.5;
+  for(int i=0;i<12;i++){
+    vec3 world=origin+ray*segment*(float(i)+jitter)/12.;
+    float submerged=1.-smoothstep(17.5,18.4,world.y);
+    vec4 projected=sunlightMatrix*vec4(world,1.);vec3 q=projected.xyz/projected.w;
+    float lit=1.;
+    if(q.x>0.&&q.x<1.&&q.y>0.&&q.y<1.&&q.z>0.&&q.z<1.){
+      float blocker=unpackRGBAToDepth(texture2D(sunlightDepth,q.xy));
+      lit=1.-smoothstep(blocker+.0004,blocker+.002,q.z);
+    }
+    sum+=lit*submerged*exp(-max(0.,18.-world.y)*.035);
+  }
+  return sum/12.*(1.-exp(-segment*.045))*shaftStrength;
+}
 void main(){
+  float shafts=lightShafts();
   float depth=texture2D(sceneDepth,vUv).x;
-  if(depth>.99998){gl_FragColor=vec4(1.);return;}
+  if(depth>.99998){gl_FragColor=vec4(1.,shafts,0.,1.);return;}
   vec3 p=viewPoint(vUv);vec2 px=1./resolution;
   vec3 l=viewPoint(vUv-vec2(px.x,0.)),r=viewPoint(vUv+vec2(px.x,0.));
   vec3 b=viewPoint(vUv-vec2(0.,px.y)),t=viewPoint(vUv+vec2(0.,px.y));
@@ -35,13 +59,13 @@ void main(){
     sum+=horizon*(1.-smoothstep(.1,2.8,dist));
   }
   float ao=clamp(1.-sum*.34,.38,1.);
-  gl_FragColor=vec4(vec3(ao),1.);
+  gl_FragColor=vec4(ao,shafts,0.,1.);
 }`;
 
 const composite = `${reconstruct}
 uniform sampler2D sceneColor, sceneAO;
 uniform vec3 eye, sunDirection, waterColor;
-uniform float seaLevel, time, exposure, waterLighting;
+uniform float seaLevel, time, exposure, waterLighting, visibilityDistance;
 varying vec2 vUv;
 void main(){
   float rawDepth=texture2D(sceneDepth,vUv).x;
@@ -70,6 +94,7 @@ void main(){
   // losing warm wavelengths and contrast beyond the near reef.
   vec3 extinction=vec3(.025,.0125,.0105)*density;
   vec3 transmission=exp(-extinction*waterDistance);
+  transmission*=1.-smoothstep(visibilityDistance*.72,visibilityDistance,waterDistance);
   vec3 color=texture2D(sceneColor,vUv).rgb;
   vec2 px=1./resolution;
 
@@ -110,11 +135,16 @@ void main(){
   float sunFacing=pow(max(0.,dot(ray,waterSun)),14.);
   scatter+=vec3(.023,.066,.069)*sunFacing*exp(-max(0.,seaLevel-eye.y)*.045)*waterLighting;
   color=color*transmission+scatter*(1.-transmission);
+  float shafts=texture2D(sceneAO,vUv).g;
+
 
   // At an empty underwater horizon, distant water converges to the exact same
   // optical medium as far terrain. No background-specific depth darkening.
   float horizonMix=background?underwater*(1.-exp(-waterDistance*.025)):0.;
   color=mix(color,scatter,horizonMix*.65);
+  vec2 shaftPx=2./resolution;
+  shafts=(shafts*2.+texture2D(sceneAO,vUv+vec2(shaftPx.x,0.)).g+texture2D(sceneAO,vUv-vec2(shaftPx.x,0.)).g+texture2D(sceneAO,vUv+vec2(0.,shaftPx.y)).g+texture2D(sceneAO,vUv-vec2(0.,shaftPx.y)).g)/6.;
+  color+=vec3(.055,.10,.09)*shafts*underwater;
 
   float vignette=dot(vUv-.5,vUv-.5);
   color*=1.-vignette*.12;
@@ -126,40 +156,59 @@ void main(){
 /** Linear-HDR scene -> half-resolution depth AO -> underwater optical resolve. */
 export class OceanRenderer {
   constructor(renderer, { coarse = false } = {}) {
-    this.renderer=renderer;this.coarse=coarse;this.quality='high';this.width=0;this.height=0;
+    this.renderer=renderer;this.coarse=coarse;this.quality='high';this.width=0;this.height=0;this.adaptiveScale=1;this.frameSamples=[];this.goodWindows=0;this.warmup=45;this.shadowBase=null;
     this.target=new T.WebGLRenderTarget(1,1,{type:T.HalfFloatType,minFilter:T.LinearFilter,magFilter:T.LinearFilter});
     this.target.depthTexture=new T.DepthTexture(1,1,T.UnsignedIntType);
     this.target.depthTexture.format=T.DepthFormat;
-    this.target.samples=Math.min(renderer.capabilities.maxSamples||0,coarse?2:4);
+    this.target.samples=Math.min(renderer.capabilities.maxSamples||0,coarse?0:2);
     this.target.resolveDepthBuffer=true;this.target.resolveStencilBuffer=false;
     this.aoTarget=new T.WebGLRenderTarget(1,1,{depthBuffer:false,type:T.UnsignedByteType});
-    const shared={sceneDepth:{value:this.target.depthTexture},inverseProjection:{value:new T.Matrix4()},cameraWorld:{value:new T.Matrix4()},resolution:{value:new T.Vector2(1,1)}};
+    const shared={sceneDepth:{value:this.target.depthTexture},inverseProjection:{value:new T.Matrix4()},cameraWorld:{value:new T.Matrix4()},resolution:{value:new T.Vector2(1,1)},sunlightDepth:{value:null},sunlightMatrix:{value:new T.Matrix4()},shaftStrength:{value:0}};
     this.aoMaterial=new T.ShaderMaterial({vertexShader:vertex,fragmentShader:occlusion,uniforms:shared,depthTest:false,depthWrite:false,toneMapped:false});
-    this.material=new T.ShaderMaterial({vertexShader:vertex,fragmentShader:composite,depthTest:false,depthWrite:false,uniforms:{...shared,sceneColor:{value:this.target.texture},sceneAO:{value:this.aoTarget.texture},eye:{value:new T.Vector3()},sunDirection:{value:new T.Vector3()},waterColor:{value:new T.Color()},seaLevel:{value:18},waterLighting:{value:1},time:{value:0},exposure:{value:1}}});
+    this.material=new T.ShaderMaterial({vertexShader:vertex,fragmentShader:composite,depthTest:false,depthWrite:false,uniforms:{...shared,sceneColor:{value:this.target.texture},sceneAO:{value:this.aoTarget.texture},eye:{value:new T.Vector3()},sunDirection:{value:new T.Vector3()},waterColor:{value:new T.Color()},seaLevel:{value:18},waterLighting:{value:1},visibilityDistance:{value:coarse?105:150},time:{value:0},exposure:{value:1}}});
     const geometry=new T.BufferGeometry();geometry.setAttribute('position',new T.Float32BufferAttribute([-1,-1,0,3,-1,0,-1,3,0],3));
     this.quad=new T.Mesh(geometry,this.material);this.quad.frustumCulled=false;
     this.screen=new T.Scene();this.screen.add(this.quad);this.camera=new T.Camera();
     this.stats={calls:0,triangles:0};
   }
   setQuality(quality){
+    this.adaptiveScale=1;this.frameSamples=[];this.warmup=45;this.goodWindows=0;this.shadowBase=null;
     this.quality=quality;const samples=quality==='high'?Math.min(this.renderer.capabilities.maxSamples||0,this.coarse?2:4):0;
     if(this.target.samples!==samples){this.target.samples=samples;this.target.dispose();}
     this.width=0;
   }
+  observeFrame(ms){
+    if(!Number.isFinite(ms)||ms<=0||ms>300){this.frameSamples=[];return;}
+    if(this.warmup>0){this.warmup--;return;}
+    this.frameSamples.push(ms);if(this.frameSamples.length<60)return;
+    const sorted=this.frameSamples.sort((a,b)=>a-b),median=sorted[30];this.frameSamples=[];
+    const target=this.coarse?34:22;
+    if(median>target*1.25){this.adaptiveScale=Math.max(this.coarse?.65:.6,this.adaptiveScale-.1);this.goodWindows=0;}
+    else if(median<target*.85){if(++this.goodWindows>=4){this.adaptiveScale=Math.min(1,this.adaptiveScale+.05);this.goodWindows=0;}}
+    else this.goodWindows=0;
+  }
   resize(){
     const size=this.renderer.getDrawingBufferSize(new T.Vector2());
-    const scale=this.quality==='high'?1:.85;
+    const scale=(this.quality==='high'?1:.85)*this.adaptiveScale;
     const w=Math.max(1,Math.round(size.x*scale)),h=Math.max(1,Math.round(size.y*scale));
     if(w===this.width&&h===this.height)return;
     this.width=w;this.height=h;this.target.setSize(w,h);this.aoTarget.setSize(Math.max(1,w>>1),Math.max(1,h>>1));
     this.material.uniforms.resolution.value.set(w,h);
   }
   render(scene,camera,sea,time){
+    const pressured=this.adaptiveScale<.86;
+    const samples=this.quality==='high'&&!pressured?Math.min(this.renderer.capabilities.maxSamples||0,this.coarse?0:2):0;
+    if(this.target.samples!==samples){this.target.samples=samples;this.target.dispose();}
+    this.shadowBase??=sea.sun.shadow.mapSize.x;
+    const shadowSize=pressured?Math.max(512,Math.round(this.shadowBase*.5)):this.shadowBase;
+    if(sea.sun.shadow.mapSize.x!==shadowSize){sea.sun.shadow.mapSize.set(shadowSize,shadowSize);sea.sun.shadow.map?.dispose();sea.sun.shadow.map=null;}
     this.resize();camera.updateMatrixWorld();
     const u=this.material.uniforms;u.inverseProjection.value.copy(camera.projectionMatrixInverse);u.cameraWorld.value.copy(camera.matrixWorld);
     u.eye.value.copy(camera.position);u.sunDirection.value.copy(sea.sunDirection);u.waterColor.value.copy(sea.uniforms.water.value);u.time.value=time;u.waterLighting.value=sea.palette.light;
+    u.shaftStrength.value=camera.position.y<17.8?sea.palette.light:0;
     const r=this.renderer;const oldAuto=r.info.autoReset;r.info.autoReset=false;r.info.reset();
     r.setRenderTarget(this.target);r.render(scene,camera);
+    u.sunlightDepth.value=sea.sun.shadow.map?.texture;u.sunlightMatrix.value.copy(sea.sun.shadow.matrix);
     this.stats.calls=r.info.render.calls;this.stats.triangles=r.info.render.triangles;
     this.quad.material=this.aoMaterial;r.setRenderTarget(this.aoTarget);r.render(this.screen,this.camera);
     this.quad.material=this.material;r.setRenderTarget(null);r.render(this.screen,this.camera);

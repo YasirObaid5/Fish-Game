@@ -1,8 +1,10 @@
 import * as T from './vendor/three.module.min.js';
 import { createReefSchoolGeometry, createReefSchoolMaterial, reefSchoolYaw } from './reef-school.js';
 import { createReefLandscape } from './reef-landscape.js';
+import { createReefGarden } from './reef-garden.js';
 import { loadReefArt } from './reef-art.js';
 import { createOceanSurface } from './ocean-surface.js';
+import { OceanSectors, createTerrainSectors } from './ocean-sectors.js';
 import { SeaCollision } from './sea-collision.js';
 import { SURFACE_Y, terrainHeight, WORLD_RADIUS } from './free-swim.mjs';
 
@@ -83,11 +85,13 @@ export class SeaWorld {
     this.makeMaterials(); this.makeLighting(); this.makeTerrain();
     this.makeLandmarks(); this.makeOuterWorld(); this.makeReefs(); this.makeVegetation();
     const ravine=createReefLandscape({floor:terrainHeight,material:this.rockMaterial,coarse:this.coarse});this.root.add(ravine.group);this.reefFloor=ravine.floorAt;
+    this.garden=createReefGarden({floor:this.reefFloor,time:this.uniforms.time,coarse:this.coarse});this.root.add(this.garden);
     this.ready=Promise.all([this.ready,loadReefArt({floor:this.reefFloor,coarse:this.coarse,time:this.uniforms.time}).then(art=>{this.reefArt=art;this.root.add(art);})]);
     this.makeSurface(); this.makeSky(); this.makeAtmosphere(); this.makeSchools();
     this.setBiome('reef');
     this.collision=new SeaCollision(this.root,new Set([this.rockMaterial,this.archMaterial,this.woodMaterial,this.darkWoodMaterial,this.ventMaterial,this.ventRimMaterial]));
     this.solidMeshes=[];this.root.traverse(o=>{if(o.isMesh&&[this.rockMaterial,this.archMaterial,this.woodMaterial,this.darkWoodMaterial,this.ventMaterial,this.ventRimMaterial].includes(o.material))this.solidMeshes.push(o);});
+    this.ready=this.ready.then(()=>{this.sectors=new OceanSectors(this.root,{coarse:this.coarse,terrain:this.terrainSectors});this.sectors.syncColors();});
   }
 
   material(color, { roughness = .72, sand = false, rock = false, sway = false, wood = false, brain = false, coral = false, ...extra } = {}) {
@@ -182,7 +186,7 @@ export class SeaWorld {
         float causticB=sin(causticUV.y*2.1+cos(causticUV.x*1.7-uSeaTime*.29));
         float caustic=pow(1.-min(1.,abs(causticA+causticB)*.62),16.);
         float submerged=1.-smoothstep(17.3,18.2,vSeaWorld.y);
-        reflectedLight.directDiffuse*=1.+caustic*submerged*exp(-max(0.,18.-vSeaWorld.y)*.045)*.38;
+        reflectedLight.directDiffuse*=1.+caustic*submerged*exp(-max(0.,18.-vSeaWorld.y)*.035)*.78;
         ${rock ? 'reflectedLight.indirectDiffuse*=mix(.65,1.,rockSample(uRockARM,vSeaWorld,rockWeights(inverseTransformDirection(normalize(vNormal),viewMatrix))).r);' : ''}
         ${coral ? 'float nearby=1.-smoothstep(12.,48.,length(cameraPosition-vSeaWorld));reflectedLight.indirectDiffuse+=diffuseColor.rgb*nearby*.22;' : ''}
         diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(.81,.98,1.),clamp((10.-vSeaWorld.y)*.018,0.,.4));
@@ -243,12 +247,7 @@ export class SeaWorld {
   }
 
   makeTerrain() {
-    const geometry = new T.PlaneGeometry(WORLD_RADIUS * 2.6, WORLD_RADIUS * 2.6, this.coarse ? 192 : 256, this.coarse ? 192 : 256);
-    geometry.rotateX(-Math.PI / 2);
-    const positions = geometry.attributes.position;
-    for (let i = 0; i < positions.count; i++) positions.setY(i, terrainHeight(positions.getX(i), positions.getZ(i)));
-    geometry.computeVertexNormals();
-    const floor = new T.Mesh(geometry, this.sandMaterial); floor.receiveShadow = true; this.root.add(floor);
+    this.terrainSectors=createTerrainSectors(this.root,this.sandMaterial,terrainHeight,{coarse:this.coarse,radius:WORLD_RADIUS});
     const rock = this.rockGeometry = new T.IcosahedronGeometry(1, this.coarse ? 3 : 5);
     const points = rock.attributes.position;
     for (let i = 0; i < points.count; i++) {
@@ -550,6 +549,7 @@ export class SeaWorld {
       }
       mesh.instanceColor.needsUpdate = true;
     }
+    this.sectors?.syncColors();
   }
 
   update(dt, time, playerPosition, camera) {
@@ -579,9 +579,11 @@ export class SeaWorld {
       transform.rotation.set(0, reefSchoolYaw(a), Math.sin(time * 2 + i) * .05); transform.scale.setScalar(.55 + fish.spread * .55); transform.updateMatrix(); this.schoolMesh.setMatrixAt(i, transform.matrix);
     }
     this.schoolMesh.instanceMatrix.needsUpdate = true;
+    this.sectors?.update(camera,playerPosition);
   }
 
   dispose() {
+    this.sectors?.dispose();
     const geometries = new Set(), materials = new Set();
     this.root.traverse(object => { if (object.geometry) geometries.add(object.geometry); if (object.material) for (const material of Array.isArray(object.material) ? object.material : [object.material]) materials.add(material); });
     for(const uniform of [...Object.values(this.rockTextures),...Object.values(this.sandTextures)])uniform.value.dispose();

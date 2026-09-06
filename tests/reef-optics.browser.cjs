@@ -99,7 +99,8 @@ async function pose(page,position,target){
   await phone.setViewportSize({width:844,height:390});await phone.evaluate(()=>window.__ocean.simulate(.5));await frame(phone,'phone-landscape');
   const mobileStats=(await state(phone)).reefArt;
   assert.ok(mobileStats.instances<desktopStats.instances,'Phone uses fewer reef instances than desktop');
-  assert.ok(loadedModels.length>=2,'Both fresh browser contexts fetched the actual GLB');
+  assert.ok(loadedModels.length>=6,'Both fresh browser contexts fetched the three actual GLBs');
+  for(const tier of ['reef-kit.glb','reef-kit-mid.glb','reef-kit-far.glb'])assert.ok(loadedModels.filter(url=>url.includes(tier)).length>=2,'Both contexts fetched '+tier);
   assert.deepEqual(failedAssets,[],'No failed model, texture or runtime asset requests');assert.deepEqual(errors,[],'No JavaScript, shader or WebGL errors');
   fs.writeFileSync(path.join(output,'reef-optics-report.json'),JSON.stringify({base,collisionSamples:collision.length,loadedModels,frames,visualReviewRequired:['transparent objects behind rocks','water horizon and Snell window','near/middle/far contrast','underwater vs above-water transitions']},null,2));
   console.log('PASS: original four-species Blender kit, bounded instanced triangles, depth optics pipeline, '+collision.length+' solid ravine collision probes, desktop/phone renders and zero model/shader failures. Screenshots still require visual review.');

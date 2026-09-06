@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 const site = process.env.GAME_URL || 'https://brilliant-kataifi-874958.netlify.app';
 const files = ['index.html','style.css','mobile.css','expedition.css','ocean.bundle.js','pwa.js','manifest.webmanifest','sw.js',
   'assets/materials/rock-color.jpg','assets/materials/rock-normal.jpg','assets/materials/rock-arm.jpg',
-  'assets/materials/sand-color.jpg','assets/materials/sand-normal.jpg','assets/materials/sand-arm.jpg','assets/models/reef-kit.glb',
+  'assets/materials/sand-color.jpg','assets/materials/sand-normal.jpg','assets/materials/sand-arm.jpg','assets/models/reef-kit.glb','assets/models/reef-kit-mid.glb','assets/models/reef-kit-far.glb',
   'icons/icon-192.png','icons/icon-512.png','icons/maskable-512.png','icons/apple-touch-icon.png'];
 const digest = value => createHash('sha256').update(value).digest('hex');
 const normalizeHTML = bytes => Buffer.from(bytes.toString()

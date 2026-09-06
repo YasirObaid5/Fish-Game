@@ -17,7 +17,7 @@ let graphicsQuality=coarse?'balanced':'high';try{const saved=storage?.getItem('a
 function applyGraphics(){
   renderer.setPixelRatio(Math.min(devicePixelRatio,graphicsQuality==='high'?(coarse?2:2.5):(coarse?1.2:1.5)));
   $('graphics-quality').value=graphicsQuality;
-  if(sea){const size=graphicsQuality==='high'?(coarse?1536:3072):(coarse?1024:2048);sea.sun.shadow.mapSize.set(size,size);sea.sun.shadow.map?.dispose();sea.sun.shadow.map=null;}
+  if(sea){const size=graphicsQuality==='high'?(coarse?1024:2048):(coarse?768:1536);sea.sun.shadow.mapSize.set(size,size);sea.sun.shadow.map?.dispose();sea.sun.shadow.map=null;}
   pipeline?.setQuality(graphicsQuality);
   slowFrames=0;try{storage?.setItem('amaq-graphics-v1',graphicsQuality);}catch{}
 }
@@ -171,7 +171,10 @@ function updateItems(dt,prev){
     if(!item.active){item.respawn-=dt;if(item.respawn<=0&&!item.temporary){item.active=true;item.mesh.visible=true;item.mesh.position.copy(item.base);}continue;}
     if((run.magnet>0||hasMedal(journal,'pearl'))&&['pearl','gold'].includes(item.kind)&&item.mesh.position.distanceTo(target)<(run.magnet>0?7:3))item.mesh.position.lerp(target,1-Math.exp(-dt*5));
     else item.mesh.position.y=item.base.y+Math.sin(time*1.8+item.phase)*(item.kind==='jelly'?.5:.15);
-    item.mesh.rotation.y+=dt*.4;
+    const renderDistance=item.mesh.position.distanceTo(target);
+    item.mesh.visible=renderDistance<(coarse?60:85);
+    for(const child of item.mesh.children)if(child.material===materials.halo)child.visible=renderDistance<24;
+    if(item.mesh.visible)item.mesh.rotation.y+=dt*.4;
     const hitRadius=item.kind==='jelly'?1.2:item.kind==='chest'?1.3:.8;
     if(!sweptSphere(prev,swimmer.position,item.mesh.position,item.mesh.position,hitRadius))continue;
     if(item.kind==='jelly'){damage();continue;}
@@ -226,7 +229,8 @@ function updateDiscoveries(dt){
   for(const f of fauna){
     const a=time*(f.kind==='school'?.23:.1)+f.phase;
     f.mesh.position.set(f.center.x+Math.cos(a)*f.radius,f.center.y+Math.sin(a*.7)*1.2,f.center.z+Math.sin(a)*f.radius);
-    orient(f.mesh,-a,Math.cos(a*.7)*.07,Math.sin(a)*.1,dt);animateFish(f.mesh,time,f.kind==='school'?1:.6);
+    f.mesh.visible=f.mesh.position.distanceTo(vec(swimmer.position))<(coarse?55:85);
+    if(f.mesh.visible){orient(f.mesh,-a,Math.cos(a*.7)*.07,Math.sin(a)*.1,dt);animateFish(f.mesh,time,f.kind==='school'?1:.6);}
     if(mode==='playing'&&f.mesh.position.distanceTo(vec(swimmer.position))<5&&!expedition.discoveredSpecies.includes(f.kind)){
       expedition.discoveredSpecies.push(f.kind);if(!journal.species.includes(f.kind)){journal.species.push(f.kind);journal.xp+=35;reward(award(run,35),f.mesh.position,{turtle:'سلحفاة بحرية',manta:'شيطان البحر',school:'سرب الشعاب'}[f.kind]);audio.play('discover');save();}
     }
@@ -369,17 +373,17 @@ function syncAudio(){const s=audio.snapshot();$('sound').disabled=!s.supported;$
 function resize(){const w=innerWidth,h=innerHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);}
 const canvas=$('ocean');
 async function init(){
-  renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,coarse?1.3:1.75));renderer.setSize(innerWidth,innerHeight,false);
+  renderer=new T.WebGLRenderer({canvas,antialias:false,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,coarse?1.3:1.75));renderer.setSize(innerWidth,innerHeight,false);
   renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFShadowMap;
   scene=new T.Scene();camera=new T.PerspectiveCamera(58,innerWidth/innerHeight,.15,1800);camera.position.set(7.5,12.8,29);
   sea=new SeaWorld(scene,{coarse,reduced});sea.setBiome(biome);hero=createFish('hero');scene.add(hero);effects=new SwimEffects(scene,reduced);feedback=new ScoreFeedback($('score-feedback'),reduced);
   shield=new T.Mesh(new T.SphereGeometry(1.35,24,16),new T.MeshBasicMaterial({color:0x8ef5d9,transparent:true,opacity:.06,depthWrite:false}));scene.add(shield);shield.visible=false;
   await sea.ready;pipeline=new OceanRenderer(renderer,{coarse});sea.prepareEnvironment(renderer);createFauna();bind();applyGraphics();syncAudio();setMode('menu');$('start').disabled=false;document.documentElement.dataset.engine='ready';document.documentElement.dataset.engineVersion='free-ocean';
-  renderer.setAnimationLoop(now=>{const dt=last?Math.min(.05,(now-last)/1000):.016;last=now;update(dt);pipeline.render(scene,camera,sea,time);if(dt>.034)slowFrames++;else slowFrames=Math.max(0,slowFrames-1);if(slowFrames>240&&graphicsQuality==='balanced'&&renderer.getPixelRatio()>1){renderer.setPixelRatio(1);slowFrames=0;}});
+  renderer.setAnimationLoop(now=>{const frameMs=last?now-last:16;const dt=Math.min(.05,frameMs/1000);last=now;update(dt);pipeline.render(scene,camera,sea,time);if(mode==='playing'&&!document.hidden)pipeline.observeFrame(frameMs);});
 }
 init().catch(error=>{console.error(error);$('error').hidden=false;});
 if(new URLSearchParams(location.search).has('test'))window.__ocean={
-  snapshot:()=>({mode,cruising,quality:graphicsQuality,renderPipeline:'depth-optics-v1',reefArt:sea.reefArt?.userData?.assetStats??null,pixelRatio:renderer.getPixelRatio(),worldRadius:WORLD_RADIUS,collisionRecords:sea.collision.records.length,collisionTriangles:sea.collision.triangles,penetrating:sea.collision.contacts(vec(swimmer.position),PLAYER_RADIUS-.04),world:biome,run:{...run},position:[swimmer.position.x,swimmer.position.y,swimmer.position.z],swimmer:JSON.parse(JSON.stringify(swimmer)),audio:audio.snapshot(),journal:JSON.parse(JSON.stringify(journal)),quest:questState(expedition),feedback:feedback.entries.map(e=>e.element.textContent),items:items.filter(i=>i.active).map(i=>({kind:i.kind,p:i.mesh.position.toArray()})),hunters:hunters.map(h=>JSON.parse(JSON.stringify(h.state))),race:race?{index:race.index,time:race.time,points:race.points.map(p=>p.toArray())}:null,landmarks:sea.landmarks.map(l=>({id:l.id,p:l.position.toArray()})),renderSize:[renderer.domElement.width,renderer.domElement.height],camera:camera.position.toArray(),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries}),
+  snapshot:()=>({mode,cruising,quality:graphicsQuality,streaming:sea.sectors?.stats,adaptiveScale:pipeline.adaptiveScale,garden:sea.garden?.userData,renderPipeline:'depth-optics-v1',reefArt:sea.reefArt?.userData?.assetStats??null,pixelRatio:renderer.getPixelRatio(),worldRadius:WORLD_RADIUS,collisionRecords:sea.collision.records.length,collisionTriangles:sea.collision.triangles,penetrating:sea.collision.contacts(vec(swimmer.position),PLAYER_RADIUS-.04),world:biome,run:{...run},position:[swimmer.position.x,swimmer.position.y,swimmer.position.z],swimmer:JSON.parse(JSON.stringify(swimmer)),audio:audio.snapshot(),journal:JSON.parse(JSON.stringify(journal)),quest:questState(expedition),feedback:feedback.entries.map(e=>e.element.textContent),items:items.filter(i=>i.active).map(i=>({kind:i.kind,p:i.mesh.position.toArray()})),hunters:hunters.map(h=>JSON.parse(JSON.stringify(h.state))),race:race?{index:race.index,time:race.time,points:race.points.map(p=>p.toArray())}:null,landmarks:sea.landmarks.map(l=>({id:l.id,p:l.position.toArray()})),renderSize:[renderer.domElement.width,renderer.domElement.height],camera:camera.position.toArray(),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries}),
   step:dt=>{update(dt);pipeline.render(scene,camera,sea,time);},simulate:seconds=>{for(let i=0;i<Math.ceil(seconds/.05);i++)update(.05);pipeline.render(scene,camera,sea,time);},
   place:(x,y,z=swimmer.position.z)=>{Object.assign(swimmer.position,{x,y,z});Object.assign(swimmer.velocity,{x:0,y:0,z:0});swimmer.airborne=false;},
   aim:(yaw,pitch=0)=>{swimmer.yaw=yaw;swimmer.pitch=pitch;},spawn:(kind,x,y,z)=>spawn(kind,x,y,z,{testPlacement:true}),encounter:event,progress:(kind,n)=>addProgress(kind,n),startRace:triggerRace,
