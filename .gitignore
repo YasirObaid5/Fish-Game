@@ -2,3 +2,4 @@ tmp/
 main.legacy.js
 node_modules/
 dist/
+assets/models/reef-tissue-webgl.png

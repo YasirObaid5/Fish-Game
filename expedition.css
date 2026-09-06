@@ -25,9 +25,9 @@ html[data-hurt="true"] .vignette { box-shadow:inset 0 0 110px #cc5f4388; }
 #radar { width:180px; height:180px; border-radius:50%; background:radial-gradient(#083d4b70,#022833a0); border:1px solid #a0d4c12d; }
 .event-label { position:absolute; bottom:72px; left:50%; transform:translateX(-50%); max-width:45vw; text-align:center; color:#c9dec9; font-size:11px; }
 .threat { position:absolute; top:115px; left:50%; transform:translateX(-50%); border:1px solid #f09d7660; border-radius:5px; padding:10px 17px; background:#492a2be6; color:#ffe5c8; max-width:60vw; text-align:center; font-size:12px; }
-.swim-actions { display:grid; grid-template-columns:56px 72px; grid-template-rows:44px 44px 44px; gap:8px; align-items:center; }
+.swim-actions { position:relative; display:grid; width:142px; grid-template-columns:72px 64px; grid-template-rows:106px 44px; gap:8px 6px; align-items:center; direction:ltr; }
 .swim-actions button { min-height:44px; border:1px solid #bbdace55; background:#07313d8c; border-radius:7px; touch-action:none; color:#eee2bf; font-size:11px; }
-#touch-rise { grid-area:1/1; }#touch-dive { grid-area:2/1; }#touch-boost { grid-area:1/2/3/3; }#touch-skill { grid-area:3/1/4/3; }
+#touch-boost { grid-area:1/1; }#touch-skill { grid-area:2/1/3/3; }
 #touch-skill[data-locked="true"] { color:#a4bfb6; border-style:dashed; }
 #water-drops { position:absolute; inset:0; pointer-events:none; opacity:0; z-index:2; background:radial-gradient(ellipse 8px 14px at 15% 25%,#b0fff433,transparent 80%),radial-gradient(ellipse 12px 18px at 84% 32%,#d6fff544,transparent 80%),radial-gradient(ellipse 8px 13px at 27% 75%,#a8ded544,transparent 80%),linear-gradient(0deg,#a8e8df15,transparent 25%); }
 #atlas { width:min(760px,calc(100vw - 28px)); max-height:86dvh; overflow:auto; padding:28px; color:#e8e8d4; background:linear-gradient(145deg,#0b3e49,#052932); border:1px solid #c8d9bd55; border-radius:12px; }
@@ -56,12 +56,12 @@ html[data-hurt="true"] .vignette { box-shadow:inset 0 0 110px #cc5f4388; }
   .score { top:75px; }.health { top:76px; }.quest-card { top:140px; right:max(16px,env(safe-area-inset-right)); width:150px; }
   .hud-atlas { top:113px; min-width:115px; }.threat { top:83px; max-width:40vw; }.toast { top:27%; max-width:45vw; }
   .boost-status { bottom:139px; width:100px; }.event-label { bottom:31px; width:40vw; max-width:40vw; }
-  .swim-actions { grid-template-columns:50px 66px; grid-template-rows:44px 44px; gap:6px; }#touch-boost { width:66px; height:66px; }#touch-skill { position:absolute; bottom:111px; right:0; width:122px; min-height:38px; }
+  .swim-actions { width:136px; grid-template-columns:66px 64px; grid-template-rows:98px 44px; gap:6px; }#touch-boost { width:66px; height:66px; }#touch-skill { min-height:44px; }
   html[data-mode="playing"] .touch-controls { bottom:max(25px,env(safe-area-inset-bottom)); }
   #destination-list { grid-template-columns:repeat(3,1fr); }#medal-list { grid-template-columns:1fr 1fr; }
 }
 @media(max-height:610px) and (orientation:portrait){.event-label { display:none; }.threat { top:276px; }.quest-card { top:190px; }.hud-atlas { top:188px; }}
-@media(max-width:359px){.quest-card { width:138px; }.hud-atlas { min-width:100px; }.swim-actions { grid-template-columns:50px 64px; }#touch-boost { width:64px; height:64px; }.medal { padding:12px; gap:10px; }}
+@media(max-width:359px){.quest-card { width:138px; }.hud-atlas { min-width:100px; }.swim-actions { width:128px; grid-template-columns:64px 58px; }#touch-boost { width:64px; height:64px; }.medal { padding:12px; gap:10px; }}
 
 /* Empty space between touch controls must not swallow other HUD buttons or look drags. */
 .touch-controls { pointer-events:none; }
@@ -82,3 +82,38 @@ html[data-hurt="true"] .vignette { box-shadow:inset 0 0 110px #cc5f4388; }
 
 .graphics-choice { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:12px 0; color:#bdd5ca; font-size:11px; }
 .graphics-choice select { min-height:40px; border:1px solid #a6c4b34d; border-radius:5px; background:#073640; color:#eddcba; padding:7px 10px; font:inherit; }
+
+/* Depth is a first-class control on every device, not a hidden keyboard shortcut. */
+.depth-control { position:absolute; right:3vw; bottom:250px; width:180px; display:grid; grid-template-columns:1fr; gap:7px; padding:11px; border:1px solid #bed9d34d; border-radius:12px; background:linear-gradient(135deg,#092c3be8,#041f2dcc); box-shadow:0 8px 30px #00182630; backdrop-filter:blur(12px); pointer-events:none; }
+.depth-control-heading { display:flex; align-items:center; justify-content:space-between; padding:0 2px 3px; color:#a4c6c4; font-size:10px; }
+#depth-panel-value { color:#f3dfb6; font:500 13px 'Segoe UI',sans-serif; font-variant-numeric:tabular-nums; }
+.depth-control button { min-height:45px; display:flex; align-items:center; gap:10px; padding:7px 11px; color:#e9f3e9; border:1px solid #b9d9d34d; border-radius:7px; background:#a0ded70c; pointer-events:auto; touch-action:none; user-select:none; -webkit-user-select:none; font-size:13px; }
+.depth-control button kbd { margin-inline-start:auto; color:#a9c6bd; font-size:10px; }
+.depth-arrow { color:#f4d79b; font-size:23px; line-height:1; font-family:Arial,sans-serif; }
+.depth-control button:hover { border-color:#cde6d9a1; background:#c6e9db16; }
+.depth-control button:active, .depth-control button[data-active="true"] { background:#d6e5c7; border-color:#eef7d8; color:#173b42; text-shadow:none; box-shadow:0 0 18px #c0e2d129; }
+.depth-control button:active .depth-arrow, .depth-control button[data-active="true"] .depth-arrow, .depth-control button[data-active="true"] kbd { color:#19454b; }
+#depth-hold-hint { color:#aec9c2; text-align:center; font-size:9px; line-height:1.6; }
+@media(pointer:coarse),(max-width:700px){
+  .depth-control { right:max(7vw,env(safe-area-inset-right)); bottom:calc(max(28px,env(safe-area-inset-bottom)) + 52px); width:64px; gap:6px; padding:0; border:0; border-radius:0; background:none; box-shadow:none; backdrop-filter:none; }
+  .depth-control-heading, #depth-hold-hint, .depth-control button kbd { display:none; }
+  .depth-control button { min-height:50px; padding:6px 7px; gap:6px; justify-content:center; font-size:11px; background:#062c3ce6; border-color:#bddec17a; border-radius:9px; }
+  .depth-arrow { font-size:22px; }
+}
+@media(pointer:coarse) and (orientation:landscape) and (max-height:540px){
+  .depth-control { bottom:calc(max(25px,env(safe-area-inset-bottom)) + 50px); }
+  .depth-control button { min-height:46px; }
+}
+@media(max-width:359px){
+  .depth-control { width:58px; }
+  .depth-control button { gap:4px; padding-inline:4px; }
+}
+@media(pointer:fine) and (max-height:650px){
+  .depth-control { bottom:82px; right:calc(3vw + 198px); }
+}
+
+/* Full-screen look surface is not a bordered form input. Button focus stays visible. */
+#ocean:focus { outline:none; }
+@media(pointer:coarse) and (orientation:portrait){
+  .event-label { bottom:calc(max(28px,env(safe-area-inset-bottom)) + 235px); }
+}

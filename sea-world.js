@@ -1,12 +1,16 @@
 import * as T from './vendor/three.module.min.js';
+import { createReefSchoolGeometry, createReefSchoolMaterial, reefSchoolYaw } from './reef-school.js';
+import { createReefLandscape } from './reef-landscape.js';
+import { loadReefArt } from './reef-art.js';
+import { createOceanSurface } from './ocean-surface.js';
 import { SeaCollision } from './sea-collision.js';
 import { SURFACE_Y, terrainHeight, WORLD_RADIUS } from './free-swim.mjs';
 
 const TAU = Math.PI * 2;
 const PALETTES = {
-  reef: { water: 0x0b6277, deep: 0x06404e, sky: 0x6faed6, horizon: 0xc9e4e6, sand: 0xcac3a4, rock: 0x788e7d, kelp: 0x558863, coral: [0xed907c, 0xdba165, 0xba739a, 0x72b7ad], fog: .015, sun: 3.7 },
-  kelp: { water: 0x235f5a, deep: 0x123e42, sky: 0xc5ded1, horizon: 0xe6ecd4, sand: 0xb7b08a, rock: 0x747f5f, kelp: 0x7c9851, coral: [0xc59266, 0xd8b572, 0x8c9982, 0x87b8a0], fog: .017, sun: 3.25 },
-  abyss: { water: 0x123b60, deep: 0x08243c, sky: 0x83acd5, horizon: 0xd0d6e8, sand: 0x8598a6, rock: 0x5f7489, kelp: 0x427d86, coral: [0xb592d4, 0x79c8ca, 0x87a3dd, 0xd38fb7], fog: .018, sun: 2.7 },
+  reef: { light:1, water: 0x0b6277, deep: 0x06404e, sky: 0x6faed6, horizon: 0xc9e4e6, sand: 0xcac3a4, rock: 0x788e7d, kelp: 0x558863, coral: [0xed907c, 0xdba165, 0xba739a, 0x72b7ad], fog: .015, sun: 3.7 },
+  kelp: { light:.78, water: 0x235f5a, deep: 0x123e42, sky: 0xc5ded1, horizon: 0xe6ecd4, sand: 0xb7b08a, rock: 0x747f5f, kelp: 0x7c9851, coral: [0xc59266, 0xd8b572, 0x8c9982, 0x87b8a0], fog: .017, sun: 3.25 },
+  abyss: { light:.14, water: 0x123b60, deep: 0x08243c, sky: 0x83acd5, horizon: 0xd0d6e8, sand: 0x8598a6, rock: 0x5f7489, kelp: 0x427d86, coral: [0xb592d4, 0x79c8ca, 0x87a3dd, 0xd38fb7], fog: .018, sun: .72 },
 };
 
 function randomSource(seed = 27931) {
@@ -78,6 +82,8 @@ export class SeaWorld {
     this.random = randomSource(); this.fogColor = new T.Color(); this.sunDirection = new T.Vector3(-.36, .85, -.39).normalize();
     this.makeMaterials(); this.makeLighting(); this.makeTerrain();
     this.makeLandmarks(); this.makeOuterWorld(); this.makeReefs(); this.makeVegetation();
+    const ravine=createReefLandscape({floor:terrainHeight,material:this.rockMaterial,coarse:this.coarse});this.root.add(ravine.group);this.reefFloor=ravine.floorAt;
+    this.ready=Promise.all([this.ready,loadReefArt({floor:this.reefFloor,coarse:this.coarse,time:this.uniforms.time}).then(art=>{this.reefArt=art;this.root.add(art);})]);
     this.makeSurface(); this.makeSky(); this.makeAtmosphere(); this.makeSchools();
     this.setBiome('reef');
     this.collision=new SeaCollision(this.root,new Set([this.rockMaterial,this.archMaterial,this.woodMaterial,this.darkWoodMaterial,this.ventMaterial,this.ventRimMaterial]));
@@ -89,6 +95,7 @@ export class SeaWorld {
     material.customProgramCacheKey = () => `open-sea-6-${sand}-${rock}-${sway}-${wood}-${brain}-${coral}`;
     material.onBeforeCompile = shader => {
       shader.uniforms.uSeaTime = this.uniforms.time;
+      if(sand){shader.uniforms.uSandColor=this.sandTextures.color;shader.uniforms.uSandNormal=this.sandTextures.normal;shader.uniforms.uSandARM=this.sandTextures.arm;}
       if(rock){shader.uniforms.uRockColor=this.rockTextures.color;shader.uniforms.uRockNormal=this.rockTextures.normal;shader.uniforms.uRockARM=this.rockTextures.arm;}
       const prefix = 'varying vec3 vSeaWorld; varying vec2 vSeaUv; uniform float uSeaTime;\n';
       shader.vertexShader = prefix + shader.vertexShader;
@@ -98,6 +105,7 @@ export class SeaWorld {
           return mix(mix(mix(seaHash(i),seaHash(i+vec3(1,0,0)),f.x),mix(seaHash(i+vec3(0,1,0)),seaHash(i+vec3(1,1,0)),f.x),f.y),
           mix(mix(seaHash(i+vec3(0,0,1)),seaHash(i+vec3(1,0,1)),f.x),mix(seaHash(i+vec3(0,1,1)),seaHash(i+vec3(1,1,1)),f.x),f.y),f.z);}
         ` + shader.fragmentShader;
+      if(sand)shader.fragmentShader='uniform sampler2D uSandColor,uSandNormal,uSandARM;\n'+shader.fragmentShader;
       if(rock)shader.fragmentShader=`
         uniform sampler2D uRockColor,uRockNormal,uRockARM;
         vec3 rockWeights(vec3 n){vec3 w=pow(abs(n),vec3(4.));return w/max(.0001,w.x+w.y+w.z);}
@@ -112,6 +120,16 @@ export class SeaWorld {
       `).replace('#include <roughnessmap_fragment>',`
         #include <roughnessmap_fragment>
         roughnessFactor=clamp(rockSample(uRockARM,vSeaWorld,rockWeights(inverseTransformDirection(normalize(vNormal),viewMatrix))).g,.55,.98);
+      `);
+      if(sand)shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>',`
+        #include <normal_fragment_maps>
+        vec3 sandDetail=texture2D(uSandNormal,vSeaWorld.xz*.11).xyz*2.-1.;
+        vec3 sandWorld=inverseTransformDirection(normal,viewMatrix);
+        sandWorld=normalize(sandWorld+vec3(sandDetail.x,0.,-sandDetail.y)*.58);
+        normal=normalize((viewMatrix*vec4(sandWorld,0.)).xyz);
+      `).replace('#include <roughnessmap_fragment>',`
+        #include <roughnessmap_fragment>
+        roughnessFactor=clamp(texture2D(uSandARM,vSeaWorld.xz*.11).g,.7,1.);
       `);
       if(sand||brain)shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_begin>',`
         #include <normal_fragment_begin>
@@ -142,7 +160,7 @@ export class SeaWorld {
         #include <color_fragment>
         ${sand ? `float ripple=sin(vSeaWorld.z*4.6+sin(vSeaWorld.x*.31)*3.+sin(vSeaWorld.z*.12));
         float grain=fract(sin(dot(floor(vSeaWorld.xz*90.),vec2(12.9898,78.233)))*43758.5453);
-        diffuseColor.rgb*=.94+ripple*.045+grain*.05;` : ''}
+        diffuseColor.rgb*=texture2D(uSandColor,vSeaWorld.xz*.11).rgb*(1.38+ripple*.05+grain*.04);` : ''}
         ${rock ? `vec3 rockN=inverseTransformDirection(normalize(vNormal),viewMatrix);
         vec3 rockW=rockWeights(rockN),albedo=rockSample(uRockColor,vSeaWorld,rockW);
         diffuseColor.rgb*=albedo*1.65;
@@ -164,7 +182,7 @@ export class SeaWorld {
         float causticB=sin(causticUV.y*2.1+cos(causticUV.x*1.7-uSeaTime*.29));
         float caustic=pow(1.-min(1.,abs(causticA+causticB)*.62),16.);
         float submerged=1.-smoothstep(17.3,18.2,vSeaWorld.y);
-        reflectedLight.directDiffuse*=1.+caustic*submerged*exp(-max(0.,18.-vSeaWorld.y)*.045)*1.15;
+        reflectedLight.directDiffuse*=1.+caustic*submerged*exp(-max(0.,18.-vSeaWorld.y)*.045)*.38;
         ${rock ? 'reflectedLight.indirectDiffuse*=mix(.65,1.,rockSample(uRockARM,vSeaWorld,rockWeights(inverseTransformDirection(normalize(vNormal),viewMatrix))).r);' : ''}
         ${coral ? 'float nearby=1.-smoothstep(12.,48.,length(cameraPosition-vSeaWorld));reflectedLight.indirectDiffuse+=diffuseColor.rgb*nearby*.22;' : ''}
         diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(.81,.98,1.),clamp((10.-vSeaWorld.y)*.018,0.,.4));
@@ -176,13 +194,14 @@ export class SeaWorld {
   makeMaterials() {
     const fallback=new T.DataTexture(new Uint8Array([128,128,255,255]),1,1);fallback.needsUpdate=true;
     this.rockTextures={color:{value:fallback},normal:{value:fallback},arm:{value:fallback}};
+    this.sandTextures={color:{value:fallback},normal:{value:fallback},arm:{value:fallback}};
     const loader=new T.TextureLoader();
-    this.ready=Promise.all([['color','rock-color.jpg'],['normal','rock-normal.jpg'],['arm','rock-arm.jpg']].map(async([kind,file])=>{
-      const texture=await loader.loadAsync('assets/materials/'+file);
+    this.ready=Promise.all(['rock','sand'].flatMap(surface=>[['color','color'],['normal','normal'],['arm','arm']].map(async([kind,suffix])=>{
+      const texture=await loader.loadAsync('assets/materials/'+surface+'-'+suffix+'.jpg');
       texture.wrapS=texture.wrapT=T.RepeatWrapping;texture.anisotropy=this.coarse?4:8;
       if(kind==='color')texture.colorSpace=T.SRGBColorSpace;
-      this.rockTextures[kind].value=texture;
-    })).then(()=>fallback.dispose());
+      this[surface+'Textures'][kind].value=texture;
+    }))).then(()=>fallback.dispose());
     this.sandMaterial = this.material(0xcac3a4, { sand: true, roughness: .94 });
     this.rockMaterial = this.material(0x788e7d, { rock: true, roughness: .88 });
     this.archMaterial = this.material(0x99a58d, { rock: true, roughness: .83 });
@@ -199,6 +218,16 @@ export class SeaWorld {
     this.ventRimMaterial = this.material(0x9d9258, { emissive: 0x425031, emissiveIntensity: .35 });
   }
 
+  prepareEnvironment(renderer) {
+    const capture=new T.Scene(),sky=this.sky.clone();sky.position.set(0,0,0);sky.visible=true;
+    sky.material=this.sky.material.clone();sky.material.uniforms=T.UniformsUtils.clone(this.sky.material.uniforms);
+    sky.material.uniforms.air.value=1;capture.add(sky);
+    const pmrem=new T.PMREMGenerator(renderer);
+    this.environment=pmrem.fromScene(capture,.05,.1,2000);
+    this.scene.environment=this.environment.texture;this.scene.environmentIntensity=.38;
+    sky.material.dispose();pmrem.dispose();
+  }
+
   makeLighting() {
     const sun = this.sun = new T.DirectionalLight(0xffefd4, 3.7);
     sun.position.copy(this.sunDirection).multiplyScalar(70); sun.castShadow = true;
@@ -206,8 +235,8 @@ export class SeaWorld {
     sun.shadow.camera.left = sun.shadow.camera.bottom = -31;
     sun.shadow.camera.right = sun.shadow.camera.top = 31;
     sun.shadow.camera.near = 1; sun.shadow.camera.far = 160;
-    sun.shadow.bias = -.00065; sun.shadow.normalBias = .16;
-    sun.shadow.radius = 2.5; this.root.add(sun, sun.target);
+    sun.shadow.bias = -.00065; sun.shadow.normalBias = .09;
+    sun.shadow.radius = 5.0; this.root.add(sun, sun.target);
     this.ambient = new T.HemisphereLight(0xa7ddea, 0x5c786e, 1.45); this.root.add(this.ambient);
     this.fill = new T.DirectionalLight(0x7dbddd, .5); this.fill.position.set(18, 10, 40); this.root.add(this.fill);
     this.scene.fog = new T.FogExp2(0x0b6277, .015); this.scene.background = new T.Color(0x0b6277);
@@ -389,7 +418,7 @@ export class SeaWorld {
 
   makeReefs() {
     const random = this.random, branches = [], tips = [], plates = [], brains = [];
-    const centers = [[207,-150],[224,-169],[-214,-179],[-191,-153],[85,222],[110,264],[-10, 19], [10, 25], [-11, 3], [11, -10], [-10, -28], [11, -22], [55, -54], [47, -43], [-78, 24], [-62, 30], [68, 46]];
+    const centers = [[207,-150],[224,-169],[-214,-179],[-191,-153],[85,222],[110,264],[55, -54], [47, -43], [-78, 24], [-62, 30], [68, 46]];
     for (let i = 0; i < (this.coarse ? 72 : 110); i++) {
       const center = centers[i % centers.length], x = center[0] + (random() - .5) * 10, z = center[1] + (random() - .5) * 11;
       const y = terrainHeight(x, z) + .35, scale = .8 + random() * 1.5, tint = this.palette.coral[i % 4];
@@ -445,63 +474,16 @@ export class SeaWorld {
   }
 
   makeSurface() {
-    const material = new T.ShaderMaterial({
-      side: T.DoubleSide, fog: true,
-      uniforms: { ...T.UniformsUtils.clone(T.UniformsLib.fog), time: this.uniforms.time, water: this.uniforms.water, sky: { value: new T.Color(this.palette.sky) }, sunDirection: { value: this.sunDirection } },
-      vertexShader: `uniform float time; varying vec3 vWorld;
-        #include <fog_pars_vertex>
-        void main(){vec3 p=position;p.y+=sin(p.x*.16+p.z*.12+time*.72)*.2+sin(p.x*.31-p.z*.24-time*.55)*.075;
-          vWorld=(modelMatrix*vec4(p,1.)).xyz;vec4 mvPosition=viewMatrix*vec4(vWorld,1.);gl_Position=projectionMatrix*mvPosition;
-          #include <fog_vertex>
-        }`,
-      fragmentShader: `uniform float time;uniform vec3 water,sky,sunDirection;varying vec3 vWorld;
-        #include <fog_pars_fragment>
-        void main(){
-          vec2 p=vWorld.xz;vec3 eye=normalize(cameraPosition-vWorld);
-          float distanceToEye=length(cameraPosition-vWorld);
-          float detailFade=1.-smoothstep(22.,100.,distanceToEye);
-          float a=p.x*.16+p.y*.12+time*.72,b=p.x*.31-p.y*.24-time*.55;
-          float fineA=sin(p.x*1.2+p.y*.91+time*.8+sin(p.y*.57-time*.25)*.6);
-          float fineB=sin(-p.x*.84+p.y*1.43-time*.65+cos(p.x*.63+time*.2)*.7);
-          float fineC=sin(p.x*2.36-p.y*1.58+time*.93+fineA*.32);
-          vec3 n=normalize(vec3(-cos(a)*.032-cos(b)*.02325+fineA*.025*detailFade,1.,-cos(a)*.024+cos(b)*.018+fineB*.024*detailFade));
-          float above=step(vWorld.y,cameraPosition.y);
-          float fresnel=.025+.975*pow(1.-abs(dot(eye,n)),5.);
-          vec3 reflection=reflect(-eye,n);float sparkle=pow(max(0.,dot(reflection,sunDirection)),650.);
-          float broadSun=pow(max(0.,dot(reflection,sunDirection)),35.);
-          vec3 reflectedSky=mix(sky*.55,sky*1.15,clamp(reflection.y*.6+.4,0.,1.));
-          vec3 top=mix(water*.62,reflectedSky,fresnel)+vec3(1.,.91,.7)*(sparkle*4.+broadSun*.18);
-          // Snell's window is one coherent opening, not a threshold on each tiny wave.
-          float window=smoothstep(.61,.79,-eye.y);
-          float skyElevation=clamp((-eye.y-.6)*2.5,0.,1.);
-          vec3 refractedSky=mix(sky*.85,vec3(.66,.83,.91),skyElevation);
-          float sunDot=max(0.,dot(-eye,sunDirection));
-          float sunHalo=pow(sunDot,42.);
-          float sunDisk=pow(sunDot,1300.);
-          vec3 below=mix(water*.8,refractedSky,window*.66);
-          below+=vec3(1.,.96,.77)*(sunHalo*.56+sunDisk*2.1)*window;
-          float filaments=pow(1.-min(1.,abs(fineA+fineB+fineC*.28)*.67),10.);
-          float microRidges=pow(max(0.,fineA*fineB),7.);
-          below+=vec3(.43,.66,.65)*(filaments*.105+microRidges*.05)*detailFade;
-          below+=vec3(.23,.35,.34)*fresnel*.12;
-          float crest=smoothstep(.255,.28,sin(a)*.2+sin(b)*.075);
-          top+=crest*.025+vec3(.32,.47,.49)*filaments*.025*detailFade;
-          gl_FragColor=vec4(mix(below,top,above),1.);
-          #include <tonemapping_fragment>
-          #include <colorspace_fragment>
-          #include <fog_fragment>
-        }`,
-    });
-    const geometry = new T.PlaneGeometry(WORLD_RADIUS*3, WORLD_RADIUS*3, this.coarse ? 80 : 112, this.coarse ? 80 : 112); geometry.rotateX(-Math.PI / 2);
-    this.surface = new T.Mesh(geometry, material); this.surface.position.y = SURFACE_Y; this.surface.frustumCulled = false; this.root.add(this.surface);
+    const ocean=createOceanSurface({size:WORLD_RADIUS*3,coarse:this.coarse,time:this.uniforms.time,water:this.uniforms.water,sky:this.palette.sky,sunDirection:this.sunDirection,surfaceY:SURFACE_Y});
+    this.surface=ocean.mesh;this.root.add(this.surface);
   }
 
   makeSky() {
     const material = new T.ShaderMaterial({
       side: T.BackSide, depthWrite: false,
-      uniforms: { time: this.uniforms.time, water: this.uniforms.water, air: this.uniforms.above, sky: { value: new T.Color(this.palette.sky) }, horizon: { value: new T.Color(this.palette.horizon) }, sunDirection: { value: this.sunDirection } },
+      uniforms: { time: this.uniforms.time, water: this.uniforms.water, air: this.uniforms.above, illumination:{value:1}, sky: { value: new T.Color(this.palette.sky) }, horizon: { value: new T.Color(this.palette.horizon) }, sunDirection: { value: this.sunDirection } },
       vertexShader: 'varying vec3 vDirection;void main(){vDirection=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-      fragmentShader: `varying vec3 vDirection;uniform vec3 sky,horizon,water,sunDirection;uniform float time,air;
+      fragmentShader: `varying vec3 vDirection;uniform vec3 sky,horizon,water,sunDirection;uniform float time,air,illumination;
         float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
         float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
         void main(){vec3 direction=normalize(vDirection);float elevation=max(0.,direction.y);
@@ -510,7 +492,7 @@ export class SeaWorld {
           vec2 cloudUV=direction.xz/max(.15,direction.y)*2.5+vec2(time*.003,0.);
           float cloud=noise(cloudUV)*.6+noise(cloudUV*2.)*.25+noise(cloudUV*4.)*.15;
           float clouds=smoothstep(.59,.77,cloud)*smoothstep(.04,.3,elevation)*.48;
-          c=mix(c,vec3(.98,.98,.94),clouds);c=mix(water,c,air);
+          c=mix(c,vec3(.98,.98,.94),clouds);c=mix(water,c*illumination,air);
           gl_FragColor=vec4(c,1.);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
@@ -520,27 +502,13 @@ export class SeaWorld {
   }
 
   makeAtmosphere() {
-    const shafts = new T.ShaderMaterial({
-      transparent: true, depthWrite: false, side: T.DoubleSide, blending: T.AdditiveBlending,
-      uniforms: { time: this.uniforms.time, above: this.uniforms.above },
-      vertexShader: 'varying vec2 vUv;varying float vDepth;void main(){vUv=uv;vec4 p=modelViewMatrix*vec4(position,1.);vDepth=-p.z;gl_Position=projectionMatrix*p;}',
-      fragmentShader: `varying vec2 vUv;varying float vDepth;uniform float time,above;
-        void main(){float edge=pow(max(0.,sin(vUv.x*3.14159)),3.);float ends=smoothstep(0.,.15,vUv.y)*(1.-smoothstep(.65,1.,vUv.y));
-          float alpha=edge*ends*(.78+.22*sin(vUv.y*13.+time*.5))*.083*exp(-max(0.,vDepth)*.014)*(1.-above);
-          gl_FragColor=vec4(.75,.88,.78,alpha);}`,
-    });
-    const rayGeo = new T.PlaneGeometry(4, 27);
-    for (let i = 0; i < 22; i++) {
-      const x = (i % 6) * 19 - 48, z = Math.floor(i / 6) * -29 + 31;
-      const ray = new T.Mesh(rayGeo, shafts); ray.position.set(x, 5, z); ray.rotation.z = -.35; this.root.add(ray); this.rays.push(ray);
-    }
-    const count = this.coarse ? 420 : 720, data = [], seeds = [];
+    const count = this.coarse ? 520 : 850, data = [], seeds = [];
     for (let i = 0; i < count; i++) { data.push((this.random() - .5) * 240, -5 + this.random() * 22, (this.random() - .5) * 240); seeds.push(this.random()); }
     const dustGeometry = new T.BufferGeometry(); dustGeometry.setAttribute('position', new T.Float32BufferAttribute(data, 3)); dustGeometry.setAttribute('seed', new T.Float32BufferAttribute(seeds, 1));
     const dustMaterial = new T.ShaderMaterial({
       transparent: true, depthWrite: false, blending: T.AdditiveBlending,
       uniforms: { time: this.uniforms.time, above: this.uniforms.above },
-      vertexShader: `attribute float seed;uniform float time;varying float vFade;void main(){vec3 p=position;p.x+=sin(time*.17+seed*50.)*.7;p.y+=sin(time*.3+seed*70.)*.4;vec4 mv=modelViewMatrix*vec4(p,1.);gl_Position=projectionMatrix*mv;gl_PointSize=clamp((130.+seed*100.)/max(2.,-mv.z),1.,5.);vFade=exp(-max(0.,-mv.z)*.025)*(.3+seed*.4);}`,
+      vertexShader: `attribute float seed;uniform float time;varying float vFade;void main(){vec3 p=mod(position+vec3(sin(time*.17+seed*50.)*.7,time*.065,0.)-cameraPosition+vec3(36.,25.,36.),vec3(72.,50.,72.))-vec3(36.,25.,36.)+cameraPosition;vec4 mv=modelViewMatrix*vec4(p,1.);gl_Position=projectionMatrix*mv;gl_PointSize=clamp((130.+seed*100.)/max(2.,-mv.z),1.,5.);vFade=exp(-max(0.,-mv.z)*.060)*(.24+seed*.30)*(1.-smoothstep(17.,18.,p.y));}`,
       fragmentShader: `uniform float above;varying float vFade;void main(){float r=length(gl_PointCoord-.5)*2.;float a=(1.-smoothstep(.2,1.,r))*vFade*(1.-above)*.38;gl_FragColor=vec4(.65,.86,.84,a);}`,
     });
     this.root.add(new T.Points(dustGeometry, dustMaterial));
@@ -557,13 +525,9 @@ export class SeaWorld {
   }
 
   makeSchools() {
-    const body = new T.SphereGeometry(1, 10, 6), tail = new T.ConeGeometry(1, 1, 3);
-    transform.position.set(.1, 0, 0); transform.rotation.set(0, 0, 0); transform.scale.set(.48, .13, .1); transform.updateMatrix(); const bodyMatrix = transform.matrix.clone();
-    transform.position.set(-.42, 0, 0); transform.rotation.set(0, 0, -Math.PI / 2); transform.scale.set(.21, .3, .06); transform.updateMatrix();
-    const geometry = mergedGeometry([[body, bodyMatrix], [tail, transform.matrix.clone()]]); body.dispose(); tail.dispose();
-    const material = this.material(0xc7dfe0, { roughness: .28, metalness: .35 });
+    const geometry=createReefSchoolGeometry(),material=createReefSchoolMaterial(this.uniforms.time);
     const count = this.coarse ? 42 : 72, entries = [];
-    for (let i = 0; i < count; i++) entries.push({ p: [0, 0, 0], c: [0xbdcdb8, 0x86c6ce, 0xd6c191][i % 3] });
+    for (let i = 0; i < count; i++) entries.push({ p: [0, 0, 0], c: [0xffffff, 0xe5f0ed, 0xf6edd9][i % 3] });
     this.schoolMesh = entriesMesh(geometry, material, entries, this.root, false);
     this.schoolMesh.frustumCulled = false; this.schoolMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);
     for (let i = 0; i < count; i++) this.schools.push({ group: i % 3, angle: this.random() * TAU, spread: this.random(), altitude: this.random() });
@@ -574,6 +538,7 @@ export class SeaWorld {
     this.uniforms.water.value.set(p.water); this.sandMaterial.color.set(p.sand); this.rockMaterial.color.set(p.rock).lerp(new T.Color(0xffffff),.72);
     this.archMaterial.color.set(p.rock).lerp(new T.Color(0xd9d5b8), .26); this.kelpMaterial.color.set(p.kelp);
     this.stemMaterial.color.set(p.kelp).multiplyScalar(.7); this.sun.intensity = p.sun;
+    this.surface.material.uniforms.illumination.value=p.light;this.sky.material.uniforms.illumination.value=p.light;
     this.surface.material.uniforms.sky.value.set(p.sky); this.sky.material.uniforms.sky.value.set(p.sky); this.sky.material.uniforms.horizon.value.set(p.horizon);
     for (let m = 0; m < this.coralMeshes.length; m++) {
       const mesh = this.coralMeshes[m]; if (!mesh) continue;
@@ -594,12 +559,12 @@ export class SeaWorld {
     this.air += (air - this.air) * (1 - Math.exp(-dt * 9)); this.uniforms.above.value = this.air;
     const depth = T.MathUtils.clamp((SURFACE_Y - camera.position.y) / 28, 0, 1);
     this.fogColor.set(this.palette.water).lerp(new T.Color(this.palette.deep), depth * .5).lerp(new T.Color(this.palette.horizon), this.air);
-    this.scene.fog.color.copy(this.fogColor); this.scene.fog.density = T.MathUtils.lerp(this.palette.fog * (1 + depth * .22), .0017, this.air);
+    this.scene.fog.color.copy(this.fogColor); this.scene.fog.density = this.air*.0017; // Underwater attenuation is resolved from real scene depth.
     this.scene.background.copy(this.fogColor); this.sky.position.copy(camera.position); this.sky.visible = this.air > .001;
     this.sun.target.position.set(playerPosition.x, playerPosition.y-4, playerPosition.z); this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDirection, 75);
-    this.sun.target.updateMatrixWorld(); this.ambient.intensity = .55 + (1 - depth) * .6 + this.air * .6;
+    this.sun.target.updateMatrixWorld(); this.ambient.intensity = (.38 + (1 - depth) * .45 + this.air * .55)*this.palette.light;
     const deepFade=T.MathUtils.smoothstep(SURFACE_Y-camera.position.y,28,75);
-    this.sun.intensity=this.palette.sun*(1-deepFade*.7);
+    this.sun.intensity=this.palette.sun*(1-deepFade*.7);this.scene.environmentIntensity=.38*this.palette.light*(1-deepFade*.72);this.fill.intensity=.5*this.palette.light;
     this.diveLamp.intensity=deepFade*95;this.diveLamp.position.copy(playerPosition).add(new T.Vector3(0,.5,0));
     const look=camera.getWorldDirection(new T.Vector3());this.diveLamp.target.position.copy(playerPosition).addScaledVector(look,12);this.diveLamp.target.updateMatrixWorld();
     this.ambient.color.set(this.palette.sky); this.ambient.groundColor.set(this.palette.water).multiplyScalar(.55);
@@ -611,7 +576,7 @@ export class SeaWorld {
     for (let i = 0; i < this.schools.length; i++) {
       const fish = this.schools[i], center = centers[fish.group], a = fish.angle + time * (.075 + fish.group * .018), radius = 5 + fish.spread * 10;
       transform.position.set(center[0] + Math.cos(a) * radius, center[1] + Math.sin(a * 2 + fish.altitude * 4) * 1.6 + (fish.altitude - .5) * 4, center[2] + Math.sin(a) * radius * .7);
-      transform.rotation.set(0, Math.atan2(-Math.cos(a) * .7, -Math.sin(a)), Math.sin(time * 2 + i) * .05); transform.scale.setScalar(.55 + fish.spread * .55); transform.updateMatrix(); this.schoolMesh.setMatrixAt(i, transform.matrix);
+      transform.rotation.set(0, reefSchoolYaw(a), Math.sin(time * 2 + i) * .05); transform.scale.setScalar(.55 + fish.spread * .55); transform.updateMatrix(); this.schoolMesh.setMatrixAt(i, transform.matrix);
     }
     this.schoolMesh.instanceMatrix.needsUpdate = true;
   }
@@ -619,8 +584,8 @@ export class SeaWorld {
   dispose() {
     const geometries = new Set(), materials = new Set();
     this.root.traverse(object => { if (object.geometry) geometries.add(object.geometry); if (object.material) for (const material of Array.isArray(object.material) ? object.material : [object.material]) materials.add(material); });
-    for(const uniform of Object.values(this.rockTextures))uniform.value.dispose();
+    for(const uniform of [...Object.values(this.rockTextures),...Object.values(this.sandTextures)])uniform.value.dispose();
     for (const geometry of geometries) geometry.dispose(); for (const material of materials) material.dispose();
-    this.sun.shadow.map?.dispose(); this.scene.remove(this.root);
+    this.environment?.dispose();this.sun.shadow.map?.dispose(); this.scene.remove(this.root);
   }
 }

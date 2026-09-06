@@ -1,5 +1,6 @@
 import * as T from './vendor/three.module.min.js';
 import { SeaWorld } from './sea-world.js';
+import { OceanRenderer } from './ocean-renderer.js';
 import { createFish, animateFish, disposeFish } from './marine-life.js';
 import { SURFACE_Y, terrainHeight, WORLD_RADIUS, PLAYER_RADIUS, createSwimmer, stepSwimmer, createHunter, stepHunter, sweptSphere, triggerFeint } from './free-swim.mjs';
 import { OceanAudio } from './ocean-audio.js';
@@ -17,11 +18,13 @@ function applyGraphics(){
   renderer.setPixelRatio(Math.min(devicePixelRatio,graphicsQuality==='high'?(coarse?2:2.5):(coarse?1.2:1.5)));
   $('graphics-quality').value=graphicsQuality;
   if(sea){const size=graphicsQuality==='high'?(coarse?1536:3072):(coarse?1024:2048);sea.sun.shadow.mapSize.set(size,size);sea.sun.shadow.map?.dispose();sea.sun.shadow.map=null;}
+  pipeline?.setQuality(graphicsQuality);
   slowFrames=0;try{storage?.setItem('amaq-graphics-v1',graphicsQuality);}catch{}
 }
 let best=0;try{best=Number(storage?.getItem('amaq-best'))||0;}catch{}
 let mode='menu', biome='reef', swimmer=createSwimmer(), run=newRun(), expedition=newExpedition(journal), time=0,last=0,toastTime=0, hudClock=0, saveClock=0;
-let renderer,scene,camera,sea,hero,shield,effects,feedback,items=[],hunters=[],fauna=[],race=null, selected='coral-cathedral',wet=0,safeTime=0,slowFrames=0,transient=[];
+let inspectionCamera=null;
+let renderer,pipeline,scene,camera,sea,hero,shield,effects,feedback,items=[],hunters=[],fauna=[],race=null, selected='coral-cathedral',wet=0,safeTime=0,slowFrames=0,transient=[];
 const keys=new Set(), stick={x:0,y:0,id:null}, look={id:null,x:0,y:0,yaw:0,pitch:0}, depthTouches=new Map();
 let dashRequested=false,skillRequested=false, atlasResume=false, cruising=false;
 function setCruising(enabled){
@@ -54,7 +57,7 @@ function addProgress(kind,count=1){
   save();renderJournal();
 }
 function setMode(next){
-  mode=next;setCruising(false);document.documentElement.dataset.mode=next;keys.clear();stick.x=stick.y=0;stick.id=null;look.id=null;look.yaw=look.pitch=0;depthTouches.clear();dashRequested=skillRequested=false;
+  mode=next;setCruising(false);document.documentElement.dataset.mode=next;keys.clear();stick.x=stick.y=0;stick.id=null;look.id=null;look.yaw=look.pitch=0;depthTouches.clear();for(const id of ['touch-rise','touch-dive'])$(id).dataset.active='false';dashRequested=skillRequested=false;
   $('stick').querySelector('i').style.transform='';$('menu').hidden=next==='playing';$('hud').hidden=next!=='playing';$('pause').hidden=next==='menu'||next==='ended';
   $('home').hidden=next==='menu';$('worlds').hidden=next==='paused';$('results').hidden=next!=='ended';
   $('heading').innerHTML=next==='paused'?'البحر ينتظرك.':next==='ended'?'حكايةٌ تستحق<br><em>رحلة أخرى.</em>':'لا طريقَ واحداً.<br><em>البحر لك.</em>';
@@ -271,13 +274,16 @@ function update(dt){
 }
 function resolveScenery(p,velocity,padding){return sea.collision?.resolve(p,velocity,padding);}
 function updateCamera(dt,active){
+  if(inspectionCamera){camera.position.fromArray(inspectionCamera.position);camera.lookAt(new T.Vector3().fromArray(inspectionCamera.target));camera.updateMatrixWorld();return;}
   if(!active){camGoal.set(7.5,12.8,29);aim.set(-.2,10.8,21.4);}
   else{
     const back=coarse&&innerHeight>innerWidth?9:7.4;
-    camGoal.copy(playerPos).add(new T.Vector3(-Math.sin(swimmer.yaw)*back,2.1,Math.cos(swimmer.yaw)*back));
+    // The view can orbit above/below the fish; pitch never changes forward thrust.
+    const viewPitch=clamp(swimmer.pitch-.24,-1.4,1.3),arm=back*Math.cos(viewPitch);
+    camGoal.copy(playerPos).add(new T.Vector3(-Math.sin(swimmer.yaw)*arm,1.1-Math.sin(viewPitch)*back,Math.cos(swimmer.yaw)*arm));
     if(playerPos.y<SURFACE_Y-.3)camGoal.y=Math.min(camGoal.y,SURFACE_Y-.48);
     camGoal.y=Math.max(terrainHeight(camGoal.x,camGoal.z)+1,camGoal.y);
-    aim.copy(playerPos).add(new T.Vector3(Math.sin(swimmer.yaw)*4,Math.sin(swimmer.pitch)*3+.3,-Math.cos(swimmer.yaw)*4));
+    aim.copy(playerPos).add(new T.Vector3(Math.sin(swimmer.yaw)*4*Math.cos(viewPitch),Math.sin(viewPitch)*4+.2,-Math.cos(swimmer.yaw)*4*Math.cos(viewPitch)));
   }
   if(active)camGoal.copy(sea.collision.cameraEnd(playerPos,camGoal));
   camera.position.lerp(camGoal,reduced?1:1-Math.exp(-dt*(active?7:2)));resolveScenery(camera.position,null,.3);camera.lookAt(aim);
@@ -288,6 +294,9 @@ function updateHUD(){
   $('lives').textContent='● '.repeat(Math.max(0,run.lives));$('lives').setAttribute('aria-label',run.lives+' محاولات');
   $('shield').textContent=run.shield>0?'حماية '+Math.ceil(run.shield)+' ث':run.magnet>0?'جاذبية اللآلئ':'';
   $('depth').textContent=swimmer.airborne?'فوق السطح':Math.max(0,SURFACE_Y-swimmer.position.y).toFixed(1)+' م';
+  $('depth-panel-value').textContent=$('depth').textContent;
+  $('touch-rise').dataset.active=String(mode==='playing'&&(keys.has('KeyR')||keys.has('KeyE')||[...depthTouches.values()].includes(1)));
+  $('touch-dive').dataset.active=String(mode==='playing'&&(keys.has('KeyF')||keys.has('KeyQ')||[...depthTouches.values()].includes(-1)));
   const angle=((swimmer.yaw*180/Math.PI)%360+360)%360;$('heading-value').textContent=Math.round(angle)+'°';
   $('energy').max=4;$('energy').value=Math.max(0,4-swimmer.cooldown);$('boost-label').textContent=swimmer.cooldown>0?'الاندفاع '+swimmer.cooldown.toFixed(1)+' ث':'الاندفاع جاهز';
   const q=questState(expedition);$('quest-title').textContent=q.title;$('quest-detail').textContent=q.detail;$('quest-count').textContent=q.progress+' / '+q.target;$('quest-progress').max=q.target;$('quest-progress').value=q.progress;
@@ -346,7 +355,12 @@ function bind(){
   const move=e=>{if(e.pointerId!==stick.id)return;const b=pad.getBoundingClientRect(),dx=(e.clientX-b.x-b.width/2)/(b.width*.42),dy=(e.clientY-b.y-b.height/2)/(b.height*.42),len=Math.max(1,Math.hypot(dx,dy));stick.x=dx/len;stick.y=dy/len;pad.querySelector('i').style.transform='translate('+stick.x*27+'px,'+stick.y*27+'px)';};
   pad.addEventListener('pointerdown',e=>{e.preventDefault();if(mode!=='playing')return;stick.id=e.pointerId;pad.setPointerCapture(e.pointerId);move(e);});pad.addEventListener('pointermove',move);
   const release=e=>{if(e.pointerId===stick.id){stick.id=null;stick.x=stick.y=0;pad.querySelector('i').style.transform='';}};pad.addEventListener('pointerup',release);pad.addEventListener('pointercancel',release);pad.addEventListener('lostpointercapture',release);
-  for(const [id,lift] of [['touch-rise',1],['touch-dive',-1]]){const b=$(id);b.addEventListener('pointerdown',e=>{e.preventDefault();depthTouches.set(e.pointerId,lift);b.setPointerCapture(e.pointerId);});for(const event of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(event,e=>depthTouches.delete(e.pointerId));}
+  for(const [id,lift] of [['touch-rise',1],['touch-dive',-1]]){const b=$(id);b.addEventListener('pointerdown',e=>{e.preventDefault();if(mode!=='playing')return;depthTouches.set(e.pointerId,lift);b.dataset.active='true';b.setPointerCapture(e.pointerId);});for(const event of ['pointerup','pointercancel','lostpointercapture'])b.addEventListener(event,e=>depthTouches.delete(e.pointerId));
+    const buttonKey='keyboard:'+id;
+    b.addEventListener('keydown',e=>{if(mode==='playing'&&['Space','Enter'].includes(e.code)){e.preventDefault();depthTouches.set(buttonKey,lift);}});
+    b.addEventListener('keyup',e=>{if(['Space','Enter'].includes(e.code)){e.preventDefault();depthTouches.delete(buttonKey);}});
+    b.addEventListener('blur',()=>depthTouches.delete(buttonKey));
+  }
   $('touch-boost').addEventListener('pointerdown',e=>{e.preventDefault();if(mode==='playing')dashRequested=true;});$('touch-skill').addEventListener('pointerdown',e=>{e.preventDefault();if(mode==='playing')skillRequested=true;});
   addEventListener('blur',()=>{if(mode==='playing')setMode('paused');audio.quiet();});document.addEventListener('visibilitychange',()=>{if(document.hidden){if(mode==='playing')setMode('paused');audio.quiet();}last=0;});addEventListener('pagehide',()=>{save();audio.quiet();});
   addEventListener('resize',resize);
@@ -360,17 +374,18 @@ async function init(){
   scene=new T.Scene();camera=new T.PerspectiveCamera(58,innerWidth/innerHeight,.15,1800);camera.position.set(7.5,12.8,29);
   sea=new SeaWorld(scene,{coarse,reduced});sea.setBiome(biome);hero=createFish('hero');scene.add(hero);effects=new SwimEffects(scene,reduced);feedback=new ScoreFeedback($('score-feedback'),reduced);
   shield=new T.Mesh(new T.SphereGeometry(1.35,24,16),new T.MeshBasicMaterial({color:0x8ef5d9,transparent:true,opacity:.06,depthWrite:false}));scene.add(shield);shield.visible=false;
-  await sea.ready;createFauna();bind();applyGraphics();syncAudio();setMode('menu');$('start').disabled=false;document.documentElement.dataset.engine='ready';document.documentElement.dataset.engineVersion='free-ocean';
-  renderer.setAnimationLoop(now=>{const dt=last?Math.min(.05,(now-last)/1000):.016;last=now;update(dt);renderer.render(scene,camera);if(dt>.034)slowFrames++;else slowFrames=Math.max(0,slowFrames-1);if(slowFrames>240&&graphicsQuality==='balanced'&&renderer.getPixelRatio()>1){renderer.setPixelRatio(1);slowFrames=0;}});
+  await sea.ready;pipeline=new OceanRenderer(renderer,{coarse});sea.prepareEnvironment(renderer);createFauna();bind();applyGraphics();syncAudio();setMode('menu');$('start').disabled=false;document.documentElement.dataset.engine='ready';document.documentElement.dataset.engineVersion='free-ocean';
+  renderer.setAnimationLoop(now=>{const dt=last?Math.min(.05,(now-last)/1000):.016;last=now;update(dt);pipeline.render(scene,camera,sea,time);if(dt>.034)slowFrames++;else slowFrames=Math.max(0,slowFrames-1);if(slowFrames>240&&graphicsQuality==='balanced'&&renderer.getPixelRatio()>1){renderer.setPixelRatio(1);slowFrames=0;}});
 }
 init().catch(error=>{console.error(error);$('error').hidden=false;});
 if(new URLSearchParams(location.search).has('test'))window.__ocean={
-  snapshot:()=>({mode,cruising,quality:graphicsQuality,pixelRatio:renderer.getPixelRatio(),worldRadius:WORLD_RADIUS,collisionRecords:sea.collision.records.length,collisionTriangles:sea.collision.triangles,penetrating:sea.collision.contacts(vec(swimmer.position),PLAYER_RADIUS-.04),world:biome,run:{...run},position:[swimmer.position.x,swimmer.position.y,swimmer.position.z],swimmer:JSON.parse(JSON.stringify(swimmer)),audio:audio.snapshot(),journal:JSON.parse(JSON.stringify(journal)),quest:questState(expedition),feedback:feedback.entries.map(e=>e.element.textContent),items:items.filter(i=>i.active).map(i=>({kind:i.kind,p:i.mesh.position.toArray()})),hunters:hunters.map(h=>JSON.parse(JSON.stringify(h.state))),race:race?{index:race.index,time:race.time,points:race.points.map(p=>p.toArray())}:null,landmarks:sea.landmarks.map(l=>({id:l.id,p:l.position.toArray()})),renderSize:[renderer.domElement.width,renderer.domElement.height],camera:camera.position.toArray(),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries}),
-  step:dt=>{update(dt);renderer.render(scene,camera);},simulate:seconds=>{for(let i=0;i<Math.ceil(seconds/.05);i++)update(.05);renderer.render(scene,camera);},
+  snapshot:()=>({mode,cruising,quality:graphicsQuality,renderPipeline:'depth-optics-v1',reefArt:sea.reefArt?.userData?.assetStats??null,pixelRatio:renderer.getPixelRatio(),worldRadius:WORLD_RADIUS,collisionRecords:sea.collision.records.length,collisionTriangles:sea.collision.triangles,penetrating:sea.collision.contacts(vec(swimmer.position),PLAYER_RADIUS-.04),world:biome,run:{...run},position:[swimmer.position.x,swimmer.position.y,swimmer.position.z],swimmer:JSON.parse(JSON.stringify(swimmer)),audio:audio.snapshot(),journal:JSON.parse(JSON.stringify(journal)),quest:questState(expedition),feedback:feedback.entries.map(e=>e.element.textContent),items:items.filter(i=>i.active).map(i=>({kind:i.kind,p:i.mesh.position.toArray()})),hunters:hunters.map(h=>JSON.parse(JSON.stringify(h.state))),race:race?{index:race.index,time:race.time,points:race.points.map(p=>p.toArray())}:null,landmarks:sea.landmarks.map(l=>({id:l.id,p:l.position.toArray()})),renderSize:[renderer.domElement.width,renderer.domElement.height],camera:camera.position.toArray(),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries}),
+  step:dt=>{update(dt);pipeline.render(scene,camera,sea,time);},simulate:seconds=>{for(let i=0;i<Math.ceil(seconds/.05);i++)update(.05);pipeline.render(scene,camera,sea,time);},
   place:(x,y,z=swimmer.position.z)=>{Object.assign(swimmer.position,{x,y,z});Object.assign(swimmer.velocity,{x:0,y:0,z:0});swimmer.airborne=false;},
   aim:(yaw,pitch=0)=>{swimmer.yaw=yaw;swimmer.pitch=pitch;},spawn:(kind,x,y,z)=>spawn(kind,x,y,z,{testPlacement:true}),encounter:event,progress:(kind,n)=>addProgress(kind,n),startRace:triggerRace,
   collisionProbe:(from,to,radius=PLAYER_RADIUS)=>{const p={...to};const hits=sea.collision.resolve(p,null,radius,from);return {p,hits,penetrating:sea.collision.contacts(vec(p),radius-.04)};},
-  solidSamples:()=>sea.collision.records.filter(r=>r.name==='lagoon-rocks').map(r=>{const v=r.vertices,a=new T.Vector3().fromArray(v,0),b=new T.Vector3().fromArray(v,3),c=new T.Vector3().fromArray(v,6),n=new T.Triangle(a,b,c).getNormal(new T.Vector3()),p=a.clone().add(b).add(c).divideScalar(3);return {p:p.toArray(),n:n.toArray()};}),
+  cameraPose:(position,target)=>{inspectionCamera=position?{position,target}:null;},
+  solidSamples:(name='lagoon-rocks')=>sea.collision.records.filter(r=>r.name===name).flatMap(r=>(name==='lagoon-rocks'?[0]:[.19,.31,.47,.63,.79]).map(f=>{const v=r.vertices,offset=Math.floor((v.length/9-1)*f)*9,a=new T.Vector3().fromArray(v,offset),b=new T.Vector3().fromArray(v,offset+3),c=new T.Vector3().fromArray(v,offset+6),n=new T.Triangle(a,b,c).getNormal(new T.Vector3()),p=a.clone().add(b).add(c).divideScalar(3);return {p:p.toArray(),n:n.toArray()};})),
   solids:()=>sea.collision.records.map(r=>({name:r.name,index:r.index,min:r.box.min.toArray(),max:r.box.max.toArray()})),
   hunter:(index,p)=>{Object.assign(hunters[index].state,createHunter(index,p));},surface:SURFACE_Y,
 };

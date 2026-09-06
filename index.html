@@ -62,6 +62,12 @@
       <div class="quest-card"><small>هدف رحلتك <span id="quest-count" dir="ltr">0 / 12</span></small><b id="quest-title">خيط من اللآلئ</b><span id="quest-detail">اجمع 12 لؤلؤة</span><progress id="quest-progress" max="12" value="0" aria-label="تقدم التحدي"></progress></div>
       <button id="open-atlas" class="journal-button hud-atlas" type="button">دفتر البحر <kbd>M</kbd></button>
       <button id="cruise-toggle" class="cruise-toggle" type="button" aria-pressed="false"><span>سباحة مستمرة</span><kbd>C</kbd></button>
+      <section class="depth-control" aria-label="الصعود والغوص" aria-describedby="depth-hold-hint">
+        <div class="depth-control-heading"><span>العمق</span><output id="depth-panel-value">8.0 م</output></div>
+        <button id="touch-rise" type="button" aria-label="الصعود — اضغط مطولاً، أو زر R" aria-keyshortcuts="R E"><span class="depth-arrow" aria-hidden="true">↑</span><span>صعود</span><kbd>R</kbd></button>
+        <button id="touch-dive" type="button" aria-label="الغوص — اضغط مطولاً، أو زر F" aria-keyshortcuts="F Q"><span class="depth-arrow" aria-hidden="true">↓</span><span>غوص</span><kbd>F</kbd></button>
+        <small id="depth-hold-hint">اضغط مطوّلاً لتغيير العمق</small>
+      </section>
       <div class="boost-status"><span id="boost-label">الاندفاع جاهز</span><progress id="energy" max="4" value="4" aria-label="طاقة الاندفاع"></progress><small id="skill-label">المراوغة مقفلة · 3 هروبات</small></div>
       <div id="radar-shell"><span>خريطة البحر <b>N ↑</b></span><canvas id="radar" width="180" height="180" aria-label="خريطة مواقع الوجهات والمفترسات"></canvas></div>
       <div id="event-label" class="event-label"></div>
@@ -73,7 +79,7 @@
     <div class="instructions"><span><kbd>↑↓</kbd> أمام / خلف <kbd>←→</kbd> التفاف</span><span><kbd>R</kbd> صعود <kbd>F</kbd> غوص</span><span><kbd>SPACE</kbd> اندفاع</span><span><kbd>C</kbd> سباحة مستمرة</span><span>اسحب للنظر والالتفاف</span></div>
     <div id="touch" class="touch-controls">
       <div id="stick" aria-label="اسحب للأمام أو الخلف للسباحة، وللجانبين للالتفاف"><i></i><span>أمام / خلف · التفاف</span></div>
-      <div class="swim-actions"><button id="touch-rise" aria-label="الصعود والوثب قرب السطح">صعود ↑</button><button id="touch-dive" aria-label="الغوص">غوص ↓</button><button id="touch-boost" aria-label="اندفاع">اندفاع<br><small>↑</small></button><button id="touch-skill" aria-label="المراوغة الخاصة">مراوغة ◇</button></div>
+      <div class="swim-actions"><button id="touch-boost" aria-label="اندفاع">اندفاع<br><small>↑</small></button><button id="touch-skill" aria-label="المراوغة الخاصة">مراوغة ◇</button></div>
     </div>
     <div id="water-drops" aria-hidden="true"></div>
     <dialog id="atlas" aria-labelledby="atlas-heading">
@@ -83,7 +89,7 @@
       <div class="race-callout"><div><b>تحدَّ التيار</b><p>7 حلقات · 55 ثانية · مسار جديد يبدأ من موقعك</p></div><button id="start-race" type="button">ابدأ السباق ←</button></div>
       <h3>ميدالياتك تفتح قدرات حقيقية</h3><div id="medal-list"></div>
       <p class="atlas-note">تُحفظ الميداليات والاكتشافات على هذا الجهاز، وتبقى معك حتى إن انتهت الرحلة. لا مشتريات ولا فتح عشوائي.</p>
-      <details><summary>دليل السباحة الحرة</summary><p>اضغط باستمرار ↑ / W للتقدم أفقياً، ↓ / S للخلف، ← → / A D للالتفاف. زر «سباحة مستمرة» أو C يثبت التقدم دون إبقاء إصبعك على الزر؛ اضغطه مجدداً أو ارجع للخلف للإيقاف. R أو E للصعود، F أو Q للغوص. اسحب المشهد للنظر والالتفاف؛ النظر للأعلى لا يصعد بالسمكة. الصعود والغوص مستقلان عن التقدم. Space للاندفاع. للصعود فوق السطح: اسبح إلى أعلى، ثم اندفع قرب السطح؛ بعدها تعيدك الجاذبية إلى الماء. اغص قليلاً قبل القفزة التالية. X ينفّذ المراوغة بعد فتح ميدالية ميسي.</p></details>
+      <details><summary>دليل السباحة الحرة</summary><p>اضغط باستمرار ↑ / W للتقدم أفقياً، ↓ / S للخلف، ← → / A D للالتفاف. زر «سباحة مستمرة» أو C يثبت التقدم دون إبقاء إصبعك على الزر؛ اضغطه مجدداً أو ارجع للخلف للإيقاف. للصعود والغوص استخدم الزرين الواضحين يمين الشاشة بالضغط المطوّل، أو R / E للصعود وF / Q للغوص. اسحب المشهد للنظر والالتفاف؛ النظر للأعلى لا يصعد بالسمكة. الصعود والغوص مستقلان عن التقدم. Space للاندفاع. للصعود فوق السطح: اسبح إلى أعلى، ثم اندفع قرب السطح؛ بعدها تعيدك الجاذبية إلى الماء. اغص قليلاً قبل القفزة التالية. X ينفّذ المراوغة بعد فتح ميدالية ميسي.</p></details>
     </dialog>
     <div id="error" class="error" role="alert" hidden><h2>تعذّر تشغيل البحر</h2><p>فعّل تسريع الرسومات في متصفحك ثم أعد المحاولة.</p><button onclick="location.reload()" class="primary">إعادة المحاولة</button></div>
     <div id="pwa-update" class="pwa-update" hidden><span>رحلة جديدة تنتظرك — تحديث جاهز</span><button id="update-app" type="button" hidden>تحديث وفتح اللعبة</button></div>

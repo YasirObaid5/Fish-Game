@@ -8,6 +8,8 @@
     "test:tides": "node tests/free-ocean.browser.cjs",
     "test:explore": "node tests/free-ocean.browser.cjs",
     "test:frontiers": "node tests/frontiers.browser.cjs",
+    "test:depth": "node tests/depth-controls.browser.cjs",
+    "test:graphics": "node tests/reef-optics.browser.cjs",
     "test:audio": "node tests/free-audio.browser.cjs",
     "test:pwa": "node tests/pwa.browser.cjs",
     "icons": "node scripts/render-icons.cjs"

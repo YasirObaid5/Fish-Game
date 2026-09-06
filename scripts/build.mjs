@@ -6,9 +6,11 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 await build({absWorkingDir:root,entryPoints:['free-ocean.js'],bundle:true,format:'iife',target:'es2020',minify:true,outfile:'ocean.bundle.js',legalComments:'inline'});
 const files = ['index.html','style.css','mobile.css','expedition.css','ocean.bundle.js','pwa.js','manifest.webmanifest',
   'assets/materials/rock-color.jpg','assets/materials/rock-normal.jpg','assets/materials/rock-arm.jpg',
+  'assets/materials/sand-color.jpg','assets/materials/sand-normal.jpg','assets/materials/sand-arm.jpg','assets/models/reef-kit.glb',
   'icons/icon-192.png','icons/icon-512.png','icons/maskable-512.png','icons/apple-touch-icon.png'];
 await mkdir(new URL('../dist/icons/',import.meta.url),{recursive:true});
 await mkdir(new URL('../dist/assets/materials/',import.meta.url),{recursive:true});
+await mkdir(new URL('../dist/assets/models/',import.meta.url),{recursive:true});
 const revision = createHash('sha256');
 const headers = await readFile(new URL('../_headers',import.meta.url));
 revision.update(headers);
