@@ -79,3 +79,6 @@ html[data-hurt="true"] .vignette { box-shadow:inset 0 0 110px #cc5f4388; }
   .cruise-toggle { bottom:calc(max(25px,env(safe-area-inset-bottom)) + 114px); }
   .boost-status { display:none; }
 }
+
+.graphics-choice { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:12px 0; color:#bdd5ca; font-size:11px; }
+.graphics-choice select { min-height:40px; border:1px solid #a6c4b34d; border-radius:5px; background:#073640; color:#eddcba; padding:7px 10px; font:inherit; }

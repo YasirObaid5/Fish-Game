@@ -1,7 +1,13 @@
 // Renderer-independent, bounded 3D swimming and readable, escapable predators.
 export const SURFACE_Y = 18;
-export const WORLD_RADIUS = 150;
-export const terrainHeight = (x, z) => -7 + Math.sin(x * .045) * 2.2 + Math.cos(z * .05) * 1.8 + Math.sin((x + z) * .07) * .8;
+export const WORLD_RADIUS = 420;
+export const PLAYER_RADIUS = 1.7;
+export const terrainHeight = (x, z) => {
+  const shelf=-7+Math.sin(x*.045)*2.2+Math.cos(z*.05)*1.8+Math.sin((x+z)*.07)*.8;
+  const t=Math.max(0,Math.min(1,(Math.hypot(x,z)-125)/135)),fall=t*t*(3-2*t);
+  const trench=30*Math.exp(-((x-100)**2/2800+(z-245)**2/9000));
+  return shelf-fall*(38+10*Math.sin(x*.025)*Math.cos(z*.018)+trench);
+};
 
 const TAU = Math.PI * 2;
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
@@ -117,7 +123,7 @@ export function stepSwimmer(state, input = {}, delta = 0) {
     events.push({ type: 'splash', position: { x: p.x, y: SURFACE_Y, z: p.z } });
   }
 
-  const floor = terrainHeight(p.x, p.z) + .7;
+  const floor = terrainHeight(p.x, p.z) + PLAYER_RADIUS;
   if (p.y < floor) { p.y = floor; v.y = Math.max(0, v.y); }
   const radius = Math.hypot(p.x, p.z);
   if (radius > WORLD_RADIUS - 10 && !state.boundaryWarning) {

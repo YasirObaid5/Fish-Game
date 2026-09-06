@@ -1,7 +1,7 @@
 import * as T from './vendor/three.module.min.js';
 import { SeaWorld } from './sea-world.js';
 import { createFish, animateFish, disposeFish } from './marine-life.js';
-import { SURFACE_Y, terrainHeight, WORLD_RADIUS, createSwimmer, stepSwimmer, createHunter, stepHunter, sweptSphere, triggerFeint } from './free-swim.mjs';
+import { SURFACE_Y, terrainHeight, WORLD_RADIUS, PLAYER_RADIUS, createSwimmer, stepSwimmer, createHunter, stepHunter, sweptSphere, triggerFeint } from './free-swim.mjs';
 import { OceanAudio } from './ocean-audio.js';
 import { ScoreFeedback } from './score-feedback.js';
 import { SwimEffects } from './free-effects.js';
@@ -12,6 +12,13 @@ const $=id=>document.getElementById(id), coarse=matchMedia('(pointer:coarse)').m
 const forward=new T.Vector3(0,0,-1), axis=new T.Vector3(), quat=new T.Quaternion(), playerPos=new T.Vector3(), camGoal=new T.Vector3(), aim=new T.Vector3();
 let storage;try{storage=localStorage;}catch{}
 const journal=loadJournal(storage), audio=new OceanAudio();
+let graphicsQuality=coarse?'balanced':'high';try{const saved=storage?.getItem('amaq-graphics-v1');if(['balanced','high'].includes(saved))graphicsQuality=saved;}catch{}
+function applyGraphics(){
+  renderer.setPixelRatio(Math.min(devicePixelRatio,graphicsQuality==='high'?(coarse?2:2.5):(coarse?1.2:1.5)));
+  $('graphics-quality').value=graphicsQuality;
+  if(sea){const size=graphicsQuality==='high'?(coarse?1536:3072):(coarse?1024:2048);sea.sun.shadow.mapSize.set(size,size);sea.sun.shadow.map?.dispose();sea.sun.shadow.map=null;}
+  slowFrames=0;try{storage?.setItem('amaq-graphics-v1',graphicsQuality);}catch{}
+}
 let best=0;try{best=Number(storage?.getItem('amaq-best'))||0;}catch{}
 let mode='menu', biome='reef', swimmer=createSwimmer(), run=newRun(), expedition=newExpedition(journal), time=0,last=0,toastTime=0, hudClock=0, saveClock=0;
 let renderer,scene,camera,sea,hero,shield,effects,feedback,items=[],hunters=[],fauna=[],race=null, selected='coral-cathedral',wet=0,safeTime=0,slowFrames=0,transient=[];
@@ -75,7 +82,7 @@ function spawn(kind,x,y,z,options={}){
     const body=new T.Mesh(pearlGeo,kind==='pearl'?materials.pearl:materials.gold);if(kind==='shield'||kind==='magnet')body.material=materials.ring;mesh.add(body);
     const halo=new T.Mesh(torusGeo,materials.halo);mesh.add(halo);
   }
-  mesh.position.set(x,y,z);if(!options.testPlacement)resolveScenery(mesh.position,null,kind==='jelly'?1:.7);scene.add(mesh);
+  mesh.position.set(x,y,z);if(!options.testPlacement&&!sea.collision.place(mesh.position,PLAYER_RADIUS+.4,terrainHeight,SURFACE_Y-1,WORLD_RADIUS-4)){removeItem({mesh});return null;}scene.add(mesh);
   const obj={kind,mesh,base:mesh.position.clone(),active:true,respawn:0,temporary:options.temporary||false,phase:Math.random()*6.28};items.push(obj);return obj;
 }
 function removeItem(item){scene.remove(item.mesh);if(item.mesh.userData.owned)item.mesh.traverse(o=>{o.geometry?.dispose();if(o.material&&o.material!==materials.jelly)o.material.dispose();});}
@@ -102,6 +109,13 @@ function createFauna(){
     const kind=i<2?'turtle':i<4?'manta':'school',mesh=createFish(kind,{scale:kind==='school'?.4:1});scene.add(mesh);
     fauna.push({kind,mesh,phase:i*2.41,center:new T.Vector3(Math.sin(i*2.4)*55,5+Math.sin(i)*4,Math.cos(i*2.4)*55-15),radius:kind==='manta'?16:kind==='turtle'?9:5});
   }
+  for(const id of ['titan','lantern','rift']){
+    const place=sea.landmarks.find(l=>l.id===id);
+    for(let i=0;i<(coarse?4:6);i++){
+      const kind=i===0?'manta':'school',mesh=createFish(kind,{scale:kind==='school'?.55:1.3,shadows:false});scene.add(mesh);
+      fauna.push({kind,mesh,phase:i*1.8,center:place.position.clone().add(new T.Vector3(0,4,-8)),radius:kind==='manta'?12:7});
+    }
+  }
 }
 function start(){
   if(mode==='paused'){setMode('playing');canvas.focus();return;}
@@ -115,12 +129,12 @@ function triggerRace(){
   if(race){toast('أكمل سباقك الحالي أولاً');return;}
   const origin=vec(swimmer.position),heading=swimmer.yaw;
   // Curves away from the boundary rather than spawning impossible off-map rings.
-  const inward=Math.hypot(origin.x,origin.z)>90?Math.atan2(-origin.x,origin.z):heading;
+  const inward=Math.hypot(origin.x,origin.z)>WORLD_RADIUS-65?Math.atan2(-origin.x,origin.z):heading;
   const points=[];
   for(let i=0;i<7;i++){
     const a=inward+Math.sin(i*.65)*.65,d=7+i*6.5;
     const x=origin.x+Math.sin(a)*d,z=origin.z-Math.cos(a)*d,y=clamp(origin.y+Math.sin(i*.9)*3.5,terrainHeight(x,z)+2,16.5);
-    const point=new T.Vector3(x,y,z);resolveScenery(point,null,2.2);point.y=clamp(point.y,terrainHeight(point.x,point.z)+2,16.5);points.push(point);
+    const point=new T.Vector3(x,y,z);sea.collision.place(point,2.2,terrainHeight,16.5,WORLD_RADIUS-4);points.push(point);
   }
   const meshes=points.map((p,i)=>{const m=new T.Mesh(ringGeo,ringMaterial);m.position.copy(p);m.lookAt(points[Math.min(i+1,6)].clone().add(new T.Vector3(.01,0,0)));scene.add(m);return m;});
   race={points,meshes,index:0,time:55,total:0};toast('سباق التيار: اعبر 7 حلقات مرتبة خلال 55 ثانية');audio.play('gate');
@@ -135,12 +149,12 @@ function event(kind){
   if(kind==='current'){triggerRace();return;}
   if(kind==='bloom'){
     toast('ازدهار مضيء — لآلئ ذهبية بين قناديل البحر!');audio.play('discover');
-    const center=p.clone().addScaledVector(direction,18);center.y=clamp(center.y,0,13);
+    const center=p.clone().addScaledVector(direction,18);center.y=clamp(center.y,terrainHeight(center.x,center.z)+3,13);
     for(let i=0;i<10;i++){const a=i/10*Math.PI*2;spawn(i%3===0?'jelly':'gold',center.x+Math.cos(a)*8,center.y+Math.sin(a*2)*2,center.z+Math.sin(a)*8,{temporary:true});}
     expedition.event={name:'ازدهار القناديل',remaining:40};
   }else if(kind==='shoal'){
     toast('مرّ سرب اللؤلؤ! اتبع اللمعان قبل أن يختفي');audio.play('frenzy');
-    for(let i=0;i<18;i++){const q=p.clone().addScaledVector(direction,7+i*1.9);q.x+=Math.sin(i*.55)*4;q.y=clamp(q.y+Math.sin(i*.3)*2,0,16);if(Math.hypot(q.x,q.z)<140)spawn('gold',q.x,q.y,q.z,{temporary:true});}
+    for(let i=0;i<18;i++){const q=p.clone().addScaledVector(direction,7+i*1.9);q.x+=Math.sin(i*.55)*4;q.y=clamp(q.y+Math.sin(i*.3)*2,terrainHeight(q.x,q.z)+2,16);if(Math.hypot(q.x,q.z)<WORLD_RADIUS-6)spawn('gold',q.x,q.y,q.z,{temporary:true});}
     expedition.event={name:'سرب اللؤلؤ الذهبي',remaining:35};
   }else{
     toast('كشف المدّ عن كنز قريب — ابحث عن اللمعان');audio.play('treasure');
@@ -225,7 +239,8 @@ function update(dt){
     look.yaw=look.pitch=0;
     if(skillRequested){if(hasMedal(journal,'messi')){if(triggerFeint(swimmer)){run.invulnerable=Math.max(run.invulnerable,.9);audio.play('nearMiss');effects.burst(vec(swimmer.position),0x8cf6e4);toast('مراوغة ميسي!');}}else toast('ميدالية ميسي: اهرب من 3 مطاردات لفتح المراوغة');}
     const previousBoost=swimmer.boost;const messages=stepSwimmer(swimmer,input,dt);
-    resolveScenery(swimmer.position,swimmer.velocity,.6);
+    sea.collision.resolve(swimmer.position,swimmer.velocity,PLAYER_RADIUS,prev,terrainHeight);
+    if(Math.hypot(swimmer.position.x,swimmer.position.z)>WORLD_RADIUS){Object.assign(swimmer.position,prev);swimmer.velocity.x=swimmer.velocity.y=swimmer.velocity.z=0;}
     if(swimmer.boost>previousBoost){audio.play('dash');if(hasMedal(journal,'dolphin'))swimmer.cooldown*=.75;}
     dashRequested=skillRequested=false;
     for(const e of messages){
@@ -254,16 +269,7 @@ function update(dt){
   wet=Math.max(0,wet-dt*.45);$('water-drops').style.opacity=reduced?'0':String(wet*.75);
   hudClock+=dt;if(hudClock>.1){hudClock=0;updateHUD();}
 }
-function resolveScenery(p,velocity,padding){
-  // Conservative world-space spheres leave arch openings and wreck entrances navigable.
-  for(const obstacle of sea.obstacles||[]){
-    const d=vec(p).sub(obstacle.position),radius=obstacle.radius+padding,length=d.length();
-    if(length>=radius)continue;
-    if(length<.001)d.set(0,1,0);else d.divideScalar(length);
-    p.x=obstacle.position.x+d.x*radius;p.y=obstacle.position.y+d.y*radius;p.z=obstacle.position.z+d.z*radius;
-    if(velocity){const inward=Math.min(0,velocity.x*d.x+velocity.y*d.y+velocity.z*d.z);velocity.x-=d.x*inward;velocity.y-=d.y*inward;velocity.z-=d.z*inward;}
-  }
-}
+function resolveScenery(p,velocity,padding){return sea.collision?.resolve(p,velocity,padding);}
 function updateCamera(dt,active){
   if(!active){camGoal.set(7.5,12.8,29);aim.set(-.2,10.8,21.4);}
   else{
@@ -273,13 +279,7 @@ function updateCamera(dt,active){
     camGoal.y=Math.max(terrainHeight(camGoal.x,camGoal.z)+1,camGoal.y);
     aim.copy(playerPos).add(new T.Vector3(Math.sin(swimmer.yaw)*4,Math.sin(swimmer.pitch)*3+.3,-Math.cos(swimmer.yaw)*4));
   }
-  if(active){
-    const ray=camGoal.clone().sub(playerPos),length=ray.length();ray.normalize();let clear=length;
-    for(const obstacle of sea.obstacles||[]){const d=obstacle.position.clone().sub(playerPos),t=d.dot(ray),r=obstacle.radius+.35;
-      if(t<=0||t>=length)continue;const perpendicular=d.lengthSq()-t*t;if(perpendicular<r*r)clear=Math.min(clear,Math.max(2,t-Math.sqrt(r*r-perpendicular)-.25));
-    }
-    camGoal.copy(playerPos).addScaledVector(ray,clear);
-  }
+  if(active)camGoal.copy(sea.collision.cameraEnd(playerPos,camGoal));
   camera.position.lerp(camGoal,reduced?1:1-Math.exp(-dt*(active?7:2)));resolveScenery(camera.position,null,.3);camera.lookAt(aim);
   camera.fov=T.MathUtils.lerp(camera.fov,swimmer.boost>0&&active&&!reduced?64:58,1-Math.exp(-dt*4));camera.updateProjectionMatrix();
 }
@@ -299,7 +299,7 @@ function updateHUD(){
   drawRadar();
 }
 function drawRadar(){
-  const c=$('radar'),ctx=c.getContext('2d'),size=c.width,half=size/2,scale=.46;
+  const c=$('radar'),ctx=c.getContext('2d'),size=c.width,half=size/2,scale=83/WORLD_RADIUS;
   ctx.clearRect(0,0,size,size);ctx.save();ctx.translate(half,half);ctx.strokeStyle='#a5dace35';ctx.lineWidth=1;
   for(const r of [30,60,83]){ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.stroke();}
   ctx.beginPath();ctx.moveTo(-83,0);ctx.lineTo(83,0);ctx.moveTo(0,-83);ctx.lineTo(0,83);ctx.stroke();
@@ -321,6 +321,7 @@ function renderJournal(){
 function openAtlas(){atlasResume=mode==='playing';if(atlasResume)setMode('paused');renderJournal();$('atlas').showModal();}
 function closeAtlas(){if(!$('atlas').open)return;$('atlas').close();if(atlasResume){atlasResume=false;start();}}
 function bind(){
+  $('graphics-quality').onchange=e=>{graphicsQuality=e.target.value;applyGraphics();};
   $('cruise-toggle').onclick=toggleCruising;
   $('start').onclick=start;$('home').onclick=()=>setMode('menu');$('pause').onclick=togglePause;
   $('sound').onclick=()=>{audio.toggle();syncAudio();};$('volume').addEventListener('input',e=>{audio.setVolume(Number(e.target.value)/100);syncAudio();});
@@ -353,20 +354,23 @@ function bind(){
 function syncAudio(){const s=audio.snapshot();$('sound').disabled=!s.supported;$('volume').disabled=!s.supported;$('sound').setAttribute('aria-pressed',String(s.enabled));$('sound').setAttribute('aria-label',s.enabled?'كتم الصوت':'تشغيل الصوت');$('volume').value=Math.round(s.volume*100);}
 function resize(){const w=innerWidth,h=innerHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);}
 const canvas=$('ocean');
-function init(){
+async function init(){
   renderer=new T.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,coarse?1.3:1.75));renderer.setSize(innerWidth,innerHeight,false);
   renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFShadowMap;
-  scene=new T.Scene();camera=new T.PerspectiveCamera(58,innerWidth/innerHeight,.15,650);camera.position.set(7.5,12.8,29);
+  scene=new T.Scene();camera=new T.PerspectiveCamera(58,innerWidth/innerHeight,.15,1800);camera.position.set(7.5,12.8,29);
   sea=new SeaWorld(scene,{coarse,reduced});sea.setBiome(biome);hero=createFish('hero');scene.add(hero);effects=new SwimEffects(scene,reduced);feedback=new ScoreFeedback($('score-feedback'),reduced);
   shield=new T.Mesh(new T.SphereGeometry(1.35,24,16),new T.MeshBasicMaterial({color:0x8ef5d9,transparent:true,opacity:.06,depthWrite:false}));scene.add(shield);shield.visible=false;
-  createFauna();bind();syncAudio();setMode('menu');$('start').disabled=false;document.documentElement.dataset.engine='ready';document.documentElement.dataset.engineVersion='free-ocean';
-  renderer.setAnimationLoop(now=>{const dt=last?Math.min(.05,(now-last)/1000):.016;last=now;update(dt);renderer.render(scene,camera);if(dt>.034)slowFrames++;else slowFrames=Math.max(0,slowFrames-1);if(slowFrames>150&&renderer.getPixelRatio()>1){renderer.setPixelRatio(1);slowFrames=0;}});
+  await sea.ready;createFauna();bind();applyGraphics();syncAudio();setMode('menu');$('start').disabled=false;document.documentElement.dataset.engine='ready';document.documentElement.dataset.engineVersion='free-ocean';
+  renderer.setAnimationLoop(now=>{const dt=last?Math.min(.05,(now-last)/1000):.016;last=now;update(dt);renderer.render(scene,camera);if(dt>.034)slowFrames++;else slowFrames=Math.max(0,slowFrames-1);if(slowFrames>240&&graphicsQuality==='balanced'&&renderer.getPixelRatio()>1){renderer.setPixelRatio(1);slowFrames=0;}});
 }
-try{init();}catch(error){console.error(error);$('error').hidden=false;}
+init().catch(error=>{console.error(error);$('error').hidden=false;});
 if(new URLSearchParams(location.search).has('test'))window.__ocean={
-  snapshot:()=>({mode,cruising,world:biome,run:{...run},position:[swimmer.position.x,swimmer.position.y,swimmer.position.z],swimmer:JSON.parse(JSON.stringify(swimmer)),audio:audio.snapshot(),journal:JSON.parse(JSON.stringify(journal)),quest:questState(expedition),feedback:feedback.entries.map(e=>e.element.textContent),items:items.filter(i=>i.active).map(i=>({kind:i.kind,p:i.mesh.position.toArray()})),hunters:hunters.map(h=>JSON.parse(JSON.stringify(h.state))),race:race?{index:race.index,time:race.time,points:race.points.map(p=>p.toArray())}:null,landmarks:sea.landmarks.map(l=>({id:l.id,p:l.position.toArray()})),renderSize:[renderer.domElement.width,renderer.domElement.height],camera:camera.position.toArray(),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries}),
+  snapshot:()=>({mode,cruising,quality:graphicsQuality,pixelRatio:renderer.getPixelRatio(),worldRadius:WORLD_RADIUS,collisionRecords:sea.collision.records.length,collisionTriangles:sea.collision.triangles,penetrating:sea.collision.contacts(vec(swimmer.position),PLAYER_RADIUS-.04),world:biome,run:{...run},position:[swimmer.position.x,swimmer.position.y,swimmer.position.z],swimmer:JSON.parse(JSON.stringify(swimmer)),audio:audio.snapshot(),journal:JSON.parse(JSON.stringify(journal)),quest:questState(expedition),feedback:feedback.entries.map(e=>e.element.textContent),items:items.filter(i=>i.active).map(i=>({kind:i.kind,p:i.mesh.position.toArray()})),hunters:hunters.map(h=>JSON.parse(JSON.stringify(h.state))),race:race?{index:race.index,time:race.time,points:race.points.map(p=>p.toArray())}:null,landmarks:sea.landmarks.map(l=>({id:l.id,p:l.position.toArray()})),renderSize:[renderer.domElement.width,renderer.domElement.height],camera:camera.position.toArray(),calls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries}),
   step:dt=>{update(dt);renderer.render(scene,camera);},simulate:seconds=>{for(let i=0;i<Math.ceil(seconds/.05);i++)update(.05);renderer.render(scene,camera);},
   place:(x,y,z=swimmer.position.z)=>{Object.assign(swimmer.position,{x,y,z});Object.assign(swimmer.velocity,{x:0,y:0,z:0});swimmer.airborne=false;},
   aim:(yaw,pitch=0)=>{swimmer.yaw=yaw;swimmer.pitch=pitch;},spawn:(kind,x,y,z)=>spawn(kind,x,y,z,{testPlacement:true}),encounter:event,progress:(kind,n)=>addProgress(kind,n),startRace:triggerRace,
+  collisionProbe:(from,to,radius=PLAYER_RADIUS)=>{const p={...to};const hits=sea.collision.resolve(p,null,radius,from);return {p,hits,penetrating:sea.collision.contacts(vec(p),radius-.04)};},
+  solidSamples:()=>sea.collision.records.filter(r=>r.name==='lagoon-rocks').map(r=>{const v=r.vertices,a=new T.Vector3().fromArray(v,0),b=new T.Vector3().fromArray(v,3),c=new T.Vector3().fromArray(v,6),n=new T.Triangle(a,b,c).getNormal(new T.Vector3()),p=a.clone().add(b).add(c).divideScalar(3);return {p:p.toArray(),n:n.toArray()};}),
+  solids:()=>sea.collision.records.map(r=>({name:r.name,index:r.index,min:r.box.min.toArray(),max:r.box.max.toArray()})),
   hunter:(index,p)=>{Object.assign(hunters[index].state,createHunter(index,p));},surface:SURFACE_Y,
 };

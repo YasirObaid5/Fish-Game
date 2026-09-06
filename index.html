@@ -13,9 +13,9 @@
   <meta name="description" content="أعماق — رحلة سباحة ثلاثية الأبعاد بين الشعاب المرجانية. اجمع اللآلئ، تفادَ المفترسات واكتشف البحر.">
   <title>أعماق — رحلة تحت السطح</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 40 40%27%3E%3Crect width=%2740%27 height=%2740%27 rx=%279%27 fill=%27%23063841%27/%3E%3Cpath d=%27M7 20Q20 3 33 20Q20 37 7 20L4 10V30Z%27 fill=%27%23e8c588%27/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=20260906-controls">
-  <link rel="stylesheet" href="mobile.css?v=20260906-controls">
-  <link rel="stylesheet" href="expedition.css?v=20260906-controls">
+  <link rel="stylesheet" href="style.css?v=20260906-frontiers">
+  <link rel="stylesheet" href="mobile.css?v=20260906-frontiers">
+  <link rel="stylesheet" href="expedition.css?v=20260906-frontiers">
 </head>
 <body>
   <main id="app">
@@ -42,6 +42,7 @@
           <button data-world="kelp" aria-pressed="false"><span class="world-dot kelp"></span><b>غابة المدّ</b><small>بين الأعشاب</small></button>
           <button data-world="abyss" aria-pressed="false"><span class="world-dot abyss"></span><b>بحر الليل</b><small>حياة مضيئة</small></button>
         </div>
+        <label class="graphics-choice">دقة الرسومات <select id="graphics-quality" aria-label="دقة الرسومات"><option value="balanced">متوازنة · أداء أخف</option><option value="high">عالية · تفاصيل أوضح</option></select></label>
         <button id="start" class="primary" disabled><span>نُجهّز البحر…</span><b aria-hidden="true">←</b></button>
         <button id="home" class="text-button" hidden>العودة إلى الوجهات</button>
         <p class="best">أفضل رحلة <b id="best">0</b> <span>نقطة</span></p>
@@ -62,7 +63,7 @@
       <button id="open-atlas" class="journal-button hud-atlas" type="button">دفتر البحر <kbd>M</kbd></button>
       <button id="cruise-toggle" class="cruise-toggle" type="button" aria-pressed="false"><span>سباحة مستمرة</span><kbd>C</kbd></button>
       <div class="boost-status"><span id="boost-label">الاندفاع جاهز</span><progress id="energy" max="4" value="4" aria-label="طاقة الاندفاع"></progress><small id="skill-label">المراوغة مقفلة · 3 هروبات</small></div>
-      <div id="radar-shell"><span>خريطة الخليج <b>N ↑</b></span><canvas id="radar" width="180" height="180" aria-label="خريطة مواقع الوجهات والمفترسات"></canvas></div>
+      <div id="radar-shell"><span>خريطة البحر <b>N ↑</b></span><canvas id="radar" width="180" height="180" aria-label="خريطة مواقع الوجهات والمفترسات"></canvas></div>
       <div id="event-label" class="event-label"></div>
       <div id="threat" class="threat" role="status" hidden></div>
     </section>
@@ -95,7 +96,7 @@
     </dialog>
     <noscript>تحتاج اللعبة إلى تفعيل JavaScript.</noscript>
   </main>
-  <script src="ocean.bundle.js?v=20260906-controls" defer></script>
-  <script src="pwa.js?v=20260906-controls" defer></script>
+  <script src="ocean.bundle.js?v=20260906-frontiers" defer></script>
+  <script src="pwa.js?v=20260906-frontiers" defer></script>
 </body>
 </html>

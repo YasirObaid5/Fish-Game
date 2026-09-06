@@ -86,7 +86,7 @@ test('boost has cooldown, cannot activate midair, and dive never clips through t
 });
 
 test('ocean edge current and final constraint preserve a continuous finite world', () => {
-  const s = createSwimmer(); s.position = point(143, 4, 0); s.yaw = Math.PI / 2; s.velocity.x = 21;
+  const s = createSwimmer(); s.position = point(WORLD_RADIUS - 7, 4, 0); s.yaw = Math.PI / 2; s.velocity.x = 21;
   let warnings = 0;
   for (let i = 0; i < 240; i++) {
     const before = { ...s.position };
@@ -94,7 +94,7 @@ test('ocean edge current and final constraint preserve a continuous finite world
     assert.ok(Math.hypot(s.position.x, s.position.z) <= WORLD_RADIUS + 1e-8);
     assert.ok(Math.hypot(s.position.x - before.x, s.position.y - before.y, s.position.z - before.z) < 1.5);
   }
-  assert.ok(warnings <= 1); assert.ok(s.position.x > 130);
+  assert.ok(warnings <= 1); assert.ok(s.position.x > WORLD_RADIUS - 20);
 });
 
 test('swept relative collisions cover every axis, crossing motion and non-contact', () => {
@@ -178,7 +178,7 @@ test('feint follows the heading and cannot breach terrain or the ocean boundary'
   stepSwimmer(s, { skill: true }, .025);
   run(s, .65);
   assert.ok(s.position.z > .7); assert.ok(Math.abs(s.position.x) < .01);
-  s.feintCooldown = 0; s.position = point(149.8, terrainHeight(149.8, 0) + .7, 0); s.yaw = 0;
+  s.feintCooldown = 0; s.position = point(WORLD_RADIUS - .2, terrainHeight(WORLD_RADIUS - .2, 0) + .7, 0); s.yaw = 0;
   triggerFeint(s);
   for (let i = 0; i < 40; i++) {
     stepSwimmer(s, { lift: -1 }, .025);
